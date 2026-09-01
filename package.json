@@ -98,12 +98,17 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",
+      "shortcutName": "INAAM AUTOS",
+      "uninstallDisplayName": "INAAM AUTOS & SPARE PARTS",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "installerLanguages": ["en_US"],
+      "language": "1033"
     }
   }
 }
