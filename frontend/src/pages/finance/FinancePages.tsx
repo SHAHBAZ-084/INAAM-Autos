@@ -218,24 +218,28 @@ export function ExpenseEntryPage() {
 }
 
 export function ExpensesListPage() {
-  const [items, setItems] = useState<ExpenseRecord[]>([]);
+  const [result, setResult] = useState<Awaited<ReturnType<typeof api.listExpenses>> | null>(null);
   const [fromDate, setFromDate] = useState(firstOfMonthInput());
   const [toDate, setToDate] = useState(todayInput());
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
 
-  async function load() {
+  async function load(nextPage = page) {
     setLoading(true);
     try {
-      setItems(await api.listExpenses({ fromDate, toDate }));
+      const next = await api.listExpenses({ fromDate, toDate, page: nextPage, pageSize: 20 });
+      setResult(next);
+      setPage(next.page);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    void load();
+    void load(1);
   }, []);
 
+  const items = result?.items ?? [];
   const total = items.reduce((s, i) => s + i.amount, 0);
 
   return (
@@ -258,14 +262,14 @@ export function ExpensesListPage() {
             <TextInput type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
           </div>
           <div className="flex items-end">
-            <SecondaryButton type="button" onClick={() => void load()} disabled={loading}>
+            <SecondaryButton type="button" onClick={() => { setPage(1); void load(1); }} disabled={loading}>
               {loading ? 'Loading…' : 'Apply filter'}
             </SecondaryButton>
           </div>
         </div>
       </Panel>
       <Panel>
-        <p className="mb-3 text-sm text-textSecondary">Total: Rs {formatMoney(total)}</p>
+        <p className="mb-3 text-sm text-textSecondary">Total (this page): Rs {formatMoney(total)}</p>
         <table className="min-w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-textSecondary">
@@ -292,6 +296,21 @@ export function ExpensesListPage() {
           </tbody>
         </table>
       </Panel>
+      {result && result.totalPages > 1 ? (
+        <div className="mt-4 flex items-center justify-between">
+          <p className="text-sm text-textSecondary">
+            Page {result.page} of {result.totalPages} ({result.total} expenses)
+          </p>
+          <div className="flex gap-2">
+            <SecondaryButton disabled={page <= 1 || loading} onClick={() => void load(page - 1)}>
+              Previous
+            </SecondaryButton>
+            <SecondaryButton disabled={page >= result.totalPages || loading} onClick={() => void load(page + 1)}>
+              Next
+            </SecondaryButton>
+          </div>
+        </div>
+      ) : null}
     </PageShell>
   );
 }
@@ -419,24 +438,28 @@ export function OtherIncomeEntryPage() {
 }
 
 export function OtherIncomeListPage() {
-  const [items, setItems] = useState<OtherIncomeRecord[]>([]);
+  const [result, setResult] = useState<Awaited<ReturnType<typeof api.listOtherIncomes>> | null>(null);
   const [fromDate, setFromDate] = useState(firstOfMonthInput());
   const [toDate, setToDate] = useState(todayInput());
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
 
-  async function load() {
+  async function load(nextPage = page) {
     setLoading(true);
     try {
-      setItems(await api.listOtherIncomes({ fromDate, toDate }));
+      const next = await api.listOtherIncomes({ fromDate, toDate, page: nextPage, pageSize: 20 });
+      setResult(next);
+      setPage(next.page);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    void load();
+    void load(1);
   }, []);
 
+  const items = result?.items ?? [];
   const total = items.reduce((s, i) => s + i.amount, 0);
 
   return (
@@ -459,14 +482,14 @@ export function OtherIncomeListPage() {
             <TextInput type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
           </div>
           <div className="flex items-end">
-            <SecondaryButton type="button" onClick={() => void load()} disabled={loading}>
+            <SecondaryButton type="button" onClick={() => { setPage(1); void load(1); }} disabled={loading}>
               {loading ? 'Loading…' : 'Apply filter'}
             </SecondaryButton>
           </div>
         </div>
       </Panel>
       <Panel>
-        <p className="mb-3 text-sm text-textSecondary">Total: Rs {formatMoney(total)}</p>
+        <p className="mb-3 text-sm text-textSecondary">Total (this page): Rs {formatMoney(total)}</p>
         <table className="min-w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-textSecondary">
@@ -493,6 +516,21 @@ export function OtherIncomeListPage() {
           </tbody>
         </table>
       </Panel>
+      {result && result.totalPages > 1 ? (
+        <div className="mt-4 flex items-center justify-between">
+          <p className="text-sm text-textSecondary">
+            Page {result.page} of {result.totalPages} ({result.total} records)
+          </p>
+          <div className="flex gap-2">
+            <SecondaryButton disabled={page <= 1 || loading} onClick={() => void load(page - 1)}>
+              Previous
+            </SecondaryButton>
+            <SecondaryButton disabled={page >= result.totalPages || loading} onClick={() => void load(page + 1)}>
+              Next
+            </SecondaryButton>
+          </div>
+        </div>
+      ) : null}
     </PageShell>
   );
 }

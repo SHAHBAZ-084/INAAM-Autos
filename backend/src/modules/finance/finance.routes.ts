@@ -53,9 +53,11 @@ financeRouter.post(
 financeRouter.get(
   '/expenses',
   asyncHandler(async (req, res) => {
+    const page = req.query.page ? parseInt(String(req.query.page), 10) : undefined;
+    const pageSize = req.query.pageSize ? parseInt(String(req.query.pageSize), 10) : undefined;
     const fromDate = req.query.fromDate ? String(req.query.fromDate) : undefined;
     const toDate = req.query.toDate ? String(req.query.toDate) : undefined;
-    res.json(await financeService.listExpenses({ fromDate, toDate }));
+    res.json(await financeService.listExpenses({ fromDate, toDate, page, pageSize }));
   }),
 );
 
@@ -89,9 +91,11 @@ financeRouter.post(
 financeRouter.get(
   '/other-income',
   asyncHandler(async (req, res) => {
+    const page = req.query.page ? parseInt(String(req.query.page), 10) : undefined;
+    const pageSize = req.query.pageSize ? parseInt(String(req.query.pageSize), 10) : undefined;
     const fromDate = req.query.fromDate ? String(req.query.fromDate) : undefined;
     const toDate = req.query.toDate ? String(req.query.toDate) : undefined;
-    res.json(await financeService.listOtherIncomes({ fromDate, toDate }));
+    res.json(await financeService.listOtherIncomes({ fromDate, toDate, page, pageSize }));
   }),
 );
 

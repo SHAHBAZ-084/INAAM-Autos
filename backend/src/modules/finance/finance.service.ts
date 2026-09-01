@@ -236,7 +236,16 @@ export async function createExpense(input: CreateExpenseInput) {
   };
 }
 
-export async function listExpenses(params: { fromDate?: string; toDate?: string } = {}) {
+export async function listExpenses(params: {
+  fromDate?: string;
+  toDate?: string;
+  page?: number;
+  pageSize?: number;
+} = {}) {
+  const page = Math.max(1, params.page ?? 1);
+  const pageSize = Math.min(100, Math.max(1, params.pageSize ?? 20));
+  const skip = (page - 1) * pageSize;
+
   const where: Prisma.ExpenseWhereInput = {};
   if (params.fromDate || params.toDate) {
     where.date = {};
@@ -248,25 +257,38 @@ export async function listExpenses(params: { fromDate?: string; toDate?: string 
     }
   }
 
-  const rows = await prisma.expense.findMany({
-    where,
-    include: { category: { select: { id: true, name: true } } },
-    orderBy: [{ date: 'desc' }, { id: 'desc' }],
-    take: 200,
-  });
+  const orderBy = [{ date: 'desc' as const }, { id: 'desc' as const }];
+  const include = { category: { select: { id: true, name: true } } } as const;
 
-  return rows.map((r) => ({
-    id: r.id,
-    categoryId: r.categoryId,
-    category: r.category,
-    date: r.date,
-    amount: Number(r.amount),
-    paymentMethod: r.paymentMethod,
-    description: r.description,
-    paidTo: r.paidTo,
-    note: r.note,
-    createdAt: r.createdAt,
-  }));
+  const [total, rows] = await Promise.all([
+    prisma.expense.count({ where }),
+    prisma.expense.findMany({
+      where,
+      include,
+      orderBy,
+      skip,
+      take: pageSize,
+    }),
+  ]);
+
+  return {
+    items: rows.map((r) => ({
+      id: r.id,
+      categoryId: r.categoryId,
+      category: r.category,
+      date: r.date,
+      amount: Number(r.amount),
+      paymentMethod: r.paymentMethod,
+      description: r.description,
+      paidTo: r.paidTo,
+      note: r.note,
+      createdAt: r.createdAt,
+    })),
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
 }
 
 export type CreateOtherIncomeInput = {
@@ -343,7 +365,16 @@ export async function createOtherIncome(input: CreateOtherIncomeInput) {
   };
 }
 
-export async function listOtherIncomes(params: { fromDate?: string; toDate?: string } = {}) {
+export async function listOtherIncomes(params: {
+  fromDate?: string;
+  toDate?: string;
+  page?: number;
+  pageSize?: number;
+} = {}) {
+  const page = Math.max(1, params.page ?? 1);
+  const pageSize = Math.min(100, Math.max(1, params.pageSize ?? 20));
+  const skip = (page - 1) * pageSize;
+
   const where: Prisma.OtherIncomeWhereInput = {};
   if (params.fromDate || params.toDate) {
     where.date = {};
@@ -355,22 +386,35 @@ export async function listOtherIncomes(params: { fromDate?: string; toDate?: str
     }
   }
 
-  const rows = await prisma.otherIncome.findMany({
-    where,
-    include: { category: { select: { id: true, name: true } } },
-    orderBy: [{ date: 'desc' }, { id: 'desc' }],
-    take: 200,
-  });
+  const orderBy = [{ date: 'desc' as const }, { id: 'desc' as const }];
+  const include = { category: { select: { id: true, name: true } } } as const;
 
-  return rows.map((r) => ({
-    id: r.id,
-    categoryId: r.categoryId,
-    category: r.category,
-    date: r.date,
-    amount: Number(r.amount),
-    paymentMethod: r.paymentMethod,
-    description: r.description,
-    note: r.note,
-    createdAt: r.createdAt,
-  }));
+  const [total, rows] = await Promise.all([
+    prisma.otherIncome.count({ where }),
+    prisma.otherIncome.findMany({
+      where,
+      include,
+      orderBy,
+      skip,
+      take: pageSize,
+    }),
+  ]);
+
+  return {
+    items: rows.map((r) => ({
+      id: r.id,
+      categoryId: r.categoryId,
+      category: r.category,
+      date: r.date,
+      amount: Number(r.amount),
+      paymentMethod: r.paymentMethod,
+      description: r.description,
+      note: r.note,
+      createdAt: r.createdAt,
+    })),
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
 }

@@ -791,12 +791,14 @@ export const api = {
       body: JSON.stringify({ name }),
     });
   },
-  listExpenses(params?: { fromDate?: string; toDate?: string }) {
+  listExpenses(params?: { fromDate?: string; toDate?: string; page?: number; pageSize?: number }) {
     const query = new URLSearchParams();
     if (params?.fromDate) query.set('fromDate', params.fromDate);
     if (params?.toDate) query.set('toDate', params.toDate);
+    if (params?.page != null) query.set('page', String(params.page));
+    if (params?.pageSize != null) query.set('pageSize', String(params.pageSize));
     const suffix = query.toString() ? `?${query}` : '';
-    return request<ExpenseRecord[]>(`/api/finance/expenses${suffix}`);
+    return request<PaginatedResult<ExpenseRecord>>(`/api/finance/expenses${suffix}`);
   },
   createExpense(data: {
     categoryId: number;
@@ -822,12 +824,14 @@ export const api = {
       body: JSON.stringify({ name }),
     });
   },
-  listOtherIncomes(params?: { fromDate?: string; toDate?: string }) {
+  listOtherIncomes(params?: { fromDate?: string; toDate?: string; page?: number; pageSize?: number }) {
     const query = new URLSearchParams();
     if (params?.fromDate) query.set('fromDate', params.fromDate);
     if (params?.toDate) query.set('toDate', params.toDate);
+    if (params?.page != null) query.set('page', String(params.page));
+    if (params?.pageSize != null) query.set('pageSize', String(params.pageSize));
     const suffix = query.toString() ? `?${query}` : '';
-    return request<OtherIncomeRecord[]>(`/api/finance/other-income${suffix}`);
+    return request<PaginatedResult<OtherIncomeRecord>>(`/api/finance/other-income${suffix}`);
   },
   createOtherIncome(data: {
     categoryId: number;
