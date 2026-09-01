@@ -307,6 +307,145 @@ async function recomputeLedgerRunningBalancesInTx(
   await tx.ledger.update({ where: { id: ledgerId }, data: { balance: running } });
 }
 
+type LedgerEntryCompareFields = {
+  id: number;
+  createdAt: Date;
+  isOpeningBalance: boolean;
+  voucher?: { date: Date; number: number } | null;
+};
+
+type LedgerEntryBalanceInput = LedgerEntryCompareFields & {
+  type: LedgerEntryType;
+  amount: Prisma.Decimal | number;
+};
+
+type LedgerChainState = {
+  runningBalance: number;
+  lastEntry: LedgerEntryCompareFields;
+};
+
+async function findMostRecentLedgerEntryInYearInTx(
+  tx: Prisma.TransactionClient,
+  ledgerId: number,
+  financialYearId: number,
+  excludeEntryId?: number,
+): Promise<(LedgerEntryCompareFields & { balance: number }) | null> {
+  const { yearStart, yearEnd } = await loadFinancialYearBounds(tx, financialYearId);
+  const entries = await tx.ledgerEntry.findMany({
+    where: {
+      ...ledgerEntriesForYearWhere(ledgerId, financialYearId, yearStart, yearEnd),
+      ...(excludeEntryId != null ? { id: { not: excludeEntryId } } : {}),
+    },
+    include: { voucher: { select: { date: true, number: true } } },
+    orderBy: { id: 'asc' },
+  });
+  if (entries.length === 0) return null;
+  entries.sort(compareLedgerEntries);
+  const last = entries[entries.length - 1]!;
+  return {
+    id: last.id,
+    createdAt: last.createdAt,
+    isOpeningBalance: last.isOpeningBalance,
+    voucher: last.voucher,
+    balance: Number(last.balance),
+  };
+}
+
+async function refreshLedgerChainStateAfterRecomputeInTx(
+  tx: Prisma.TransactionClient,
+  ledgerId: number,
+  financialYearId: number,
+): Promise<LedgerChainState> {
+  const ledger = await tx.ledger.findUniqueOrThrow({ where: { id: ledgerId } });
+  const mostRecent = await findMostRecentLedgerEntryInYearInTx(tx, ledgerId, financialYearId);
+  if (!mostRecent) {
+    throw new AppError(500, 'Ledger has no entries after balance recompute');
+  }
+  return {
+    runningBalance: Number(ledger.balance),
+    lastEntry: {
+      id: mostRecent.id,
+      createdAt: mostRecent.createdAt,
+      isOpeningBalance: mostRecent.isOpeningBalance,
+      voucher: mostRecent.voucher,
+    },
+  };
+}
+
+async function appendLedgerEntryBalanceInTx(
+  tx: Prisma.TransactionClient,
+  ledgerId: number,
+  financialYearId: number,
+  newEntry: LedgerEntryBalanceInput,
+  chainState?: LedgerChainState | null,
+): Promise<LedgerChainState> {
+  const ledger = await tx.ledger.findUniqueOrThrow({
+    where: { id: ledgerId },
+    include: { account: true },
+  });
+
+  let previousBalance: number;
+  let mostRecent: LedgerEntryCompareFields | null;
+
+  if (chainState) {
+    previousBalance = chainState.runningBalance;
+    mostRecent = chainState.lastEntry;
+  } else {
+    const fromDb = await findMostRecentLedgerEntryInYearInTx(
+      tx,
+      ledgerId,
+      financialYearId,
+      newEntry.id,
+    );
+    if (fromDb) {
+      previousBalance = fromDb.balance;
+      mostRecent = fromDb;
+    } else {
+      const { balance: opening } = await getOpeningBalanceSnapshot(
+        tx,
+        ledger.accountId,
+        financialYearId,
+      );
+      previousBalance = opening;
+      mostRecent = null;
+    }
+  }
+
+  const sortsAfterMostRecent =
+    mostRecent === null || compareLedgerEntries(newEntry, mostRecent) > 0;
+
+  if (!sortsAfterMostRecent) {
+    await recomputeLedgerRunningBalancesInTx(tx, ledgerId, financialYearId);
+    return refreshLedgerChainStateAfterRecomputeInTx(tx, ledgerId, financialYearId);
+  }
+
+  const debit = newEntry.type === LedgerEntryType.DEBIT ? Number(newEntry.amount) : 0;
+  const credit = newEntry.type === LedgerEntryType.CREDIT ? Number(newEntry.amount) : 0;
+  const running = computeLedgerBalance(previousBalance, debit, credit);
+
+  await tx.ledgerEntry.update({
+    where: { id: newEntry.id },
+    data: { balance: running },
+  });
+  await tx.ledger.update({
+    where: { id: ledgerId },
+    data: { balance: running },
+  });
+
+  return {
+    runningBalance: running,
+    lastEntry: {
+      id: newEntry.id,
+      createdAt: newEntry.createdAt,
+      isOpeningBalance: newEntry.isOpeningBalance,
+      voucher: newEntry.voucher ?? null,
+    },
+  };
+}
+
+/** @internal Exported for ledger balance fast-path regression tests. */
+export { recomputeLedgerRunningBalancesInTx };
+
 export const CUSTOMERS_CATEGORY_NAME = 'Customers';
 
 export function isCustomersCategoryName(name: string) {
@@ -1491,8 +1630,25 @@ async function postVoucherLedgerEntries(
     ],
   });
 
-  await recomputeLedgerRunningBalancesInTx(tx, debitLedger.id, financialYearId);
-  await recomputeLedgerRunningBalancesInTx(tx, creditLedger.id, financialYearId);
+  const createdEntries = await tx.ledgerEntry.findMany({
+    where: { voucherId, isReversal: false },
+    include: { voucher: { select: { date: true, number: true } } },
+    orderBy: { id: 'asc' },
+  });
+
+  const chainStateByLedger = new Map<number, LedgerChainState>();
+
+  for (const entry of createdEntries) {
+    const prior = chainStateByLedger.get(entry.ledgerId);
+    const next = await appendLedgerEntryBalanceInTx(
+      tx,
+      entry.ledgerId,
+      financialYearId,
+      entry,
+      prior,
+    );
+    chainStateByLedger.set(entry.ledgerId, next);
+  }
 }
 
 export type VoucherLeg = {
@@ -1508,7 +1664,13 @@ async function postMultiLegVoucherEntries(
   legs: VoucherLeg[],
   financialYearId: number,
 ) {
+  const voucher = await tx.voucher.findUniqueOrThrow({
+    where: { id: voucherId },
+    select: { date: true, number: true },
+  });
+
   const ledgerByAccountId = new Map<number, number>();
+  const chainStateByLedger = new Map<number, LedgerChainState>();
 
   for (const leg of legs) {
     let ledgerId = ledgerByAccountId.get(leg.accountId);
@@ -1518,7 +1680,7 @@ async function postMultiLegVoucherEntries(
       ledgerByAccountId.set(leg.accountId, ledgerId);
     }
 
-    await tx.ledgerEntry.create({
+    const entry = await tx.ledgerEntry.create({
       data: {
         ledgerId,
         voucherId,
@@ -1529,10 +1691,23 @@ async function postMultiLegVoucherEntries(
         isReversal: false,
       },
     });
-  }
 
-  for (const ledgerId of ledgerByAccountId.values()) {
-    await recomputeLedgerRunningBalancesInTx(tx, ledgerId, financialYearId);
+    const prior = chainStateByLedger.get(ledgerId);
+    const next = await appendLedgerEntryBalanceInTx(
+      tx,
+      ledgerId,
+      financialYearId,
+      {
+        id: entry.id,
+        createdAt: entry.createdAt,
+        isOpeningBalance: entry.isOpeningBalance,
+        type: entry.type,
+        amount: entry.amount,
+        voucher,
+      },
+      prior,
+    );
+    chainStateByLedger.set(ledgerId, next);
   }
 }
 
