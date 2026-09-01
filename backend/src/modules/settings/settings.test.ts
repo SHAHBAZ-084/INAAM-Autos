@@ -104,6 +104,32 @@ describe('business settings', () => {
     );
   });
 
+  it('persists barcode label display overrides in developerConfig', async () => {
+    const updated = await updateBusinessSettings(
+      {
+        developerConfig: {
+          showLogoOnInvoice: true,
+          showLogoOnBarcode: true,
+          taxInfo: '',
+          barcodeBusinessName: 'INAAM AUTOS',
+          barcodeCustomLines: [{ id: 'line-1', text: 'Chishtian Branch', enabled: true }],
+          invoiceFields: [],
+          barcodeFields: [],
+        },
+      },
+      { identityEditActive: true },
+    );
+
+    expect(updated.developerConfig?.barcodeBusinessName).toBe('INAAM AUTOS');
+    expect(updated.developerConfig?.barcodeCustomLines).toEqual([
+      { id: 'line-1', text: 'Chishtian Branch', enabled: true },
+    ]);
+
+    const again = await getBusinessSettings();
+    expect(again.developerConfig?.barcodeBusinessName).toBe('INAAM AUTOS');
+    expect(again.developerConfig?.barcodeCustomLines[0]?.text).toBe('Chishtian Branch');
+  });
+
   it('rejects invalid lowStockLimit', async () => {
     await expect(updateBusinessSettings({ lowStockLimit: 0 })).rejects.toThrow(
       /positive integer/i,

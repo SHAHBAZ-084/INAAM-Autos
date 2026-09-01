@@ -82,7 +82,19 @@ function parseCustomLines(raw: unknown): BarcodeCustomLine[] {
 }
 
 export function parseDeveloperConfig(raw: unknown): DeveloperPrintConfig {
-  const src = raw && typeof raw === 'object' ? (raw as Partial<DeveloperPrintConfig>) : {};
+  let src: Partial<DeveloperPrintConfig> = {};
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        src = parsed as Partial<DeveloperPrintConfig>;
+      }
+    } catch {
+      src = {};
+    }
+  } else if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    src = raw as Partial<DeveloperPrintConfig>;
+  }
   const merge = (defaults: PrintFieldConfig[], incoming: PrintFieldConfig[] | undefined) =>
     defaults.map((def) => {
       const override = incoming?.find((f) => f.key === def.key);

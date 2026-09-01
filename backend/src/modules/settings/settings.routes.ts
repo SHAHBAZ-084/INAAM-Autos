@@ -22,11 +22,19 @@ const printFieldSchema = z.object({
   enabled: z.boolean(),
 });
 
+const barcodeCustomLineSchema = z.object({
+  id: z.string().min(1).max(80),
+  text: z.string().max(200),
+  enabled: z.boolean(),
+});
+
 const developerConfigSchema = z
   .object({
     showLogoOnInvoice: z.boolean().optional(),
     showLogoOnBarcode: z.boolean().optional(),
     taxInfo: z.string().max(200).optional(),
+    barcodeBusinessName: z.string().max(120).optional(),
+    barcodeCustomLines: z.array(barcodeCustomLineSchema).max(12).optional(),
     invoiceFields: z.array(printFieldSchema).max(20).optional(),
     barcodeFields: z.array(printFieldSchema).max(20).optional(),
   })
