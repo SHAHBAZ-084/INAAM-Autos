@@ -18,11 +18,13 @@ import {
   type ParsedLabelSize,
 } from '../../lib/barcodeLabels';
 import { LABEL_58X40_MICRONS, printHtmlDocument, resolveLogoDataUrl, type ElectronPrintResult } from '../../lib/electronPrint';
-import { isPrintFieldEnabled, parseDeveloperConfig } from '../../config/developerPrint';
+import { isPrintFieldEnabled, parseDeveloperConfig, applyDeveloperBarcodeToLabelItems } from '../../config/developerPrint';
+import { onSettingsUpdated } from '../../config/brand';
 import { restorePageInteraction } from '../../lib/restorePageInteraction';
 import {
   buildFreeformCanvasInnerHtml,
   buildFreeformPrintDocumentHtml,
+  filterFreeformStyleForBarcodeConfig,
   resolveLabelStyleSelection,
 } from '../../lib/labelStyleRender';
 import { api, type CustomLabelPreset, type CustomLabelStyle } from '../../lib/api';
@@ -47,6 +49,7 @@ export type LabelItem = {
   showProductName?: boolean;
   showVariant?: boolean;
   showPrice?: boolean;
+  showBarcode?: boolean;
   /** Extra lines from developer barcode settings. */
   customLines?: string[];
 };
@@ -134,8 +137,11 @@ function LabelCard({
   const variantLine = formatVariantLine(item.size, item.colour);
   const compact = layout === 'compact' || size.heightMm <= 25 || size.widthMm <= 40;
   const previewWidthPx = Math.min(220, Math.round(size.widthMm * 2.8));
-  const showShop = layout !== 'minimal';
-  const showPrice = layout !== 'minimal';
+  const showShop = item.showShop !== false && layout !== 'minimal';
+  const showName = item.showProductName !== false;
+  const showVariant = item.showVariant !== false;
+  const showPrice = item.showPrice !== false && layout !== 'minimal';
+  const showBarcode = item.showBarcode !== false;
   const priceClass =
     layout === 'priceFocus'
       ? 'mt-1 text-base font-extrabold tracking-tight'
@@ -148,6 +154,9 @@ function LabelCard({
       className="barcode-label-card mx-auto border border-neutral-300 bg-white px-1.5 py-1.5 text-center text-black"
       style={{ width: previewWidthPx, maxWidth: '100%' }}
     >
+      {item.showLogo && item.logoSrc ? (
+        <img src={item.logoSrc} alt="" className="mx-auto mb-1 max-h-8 max-w-[80%] object-contain" />
+      ) : null}
       {showShop ? (
         <p className={`font-extrabold uppercase tracking-wide text-black ${compact ? 'text-[9px]' : 'text-[11px]'}`}>
           {item.businessName}
@@ -158,16 +167,22 @@ function LabelCard({
           {line}
         </p>
       ))}
-      <p className={`font-semibold leading-snug ${showShop ? 'mt-0.5' : ''} ${compact ? 'text-[11px]' : 'text-xs'}`}>
-        {item.productName}
-      </p>
-      {variantLine ? <p className="mt-0.5 text-[10px] font-semibold text-neutral-800">{variantLine}</p> : null}
+      {showName ? (
+        <p className={`font-semibold leading-snug ${showShop ? 'mt-0.5' : ''} ${compact ? 'text-[11px]' : 'text-xs'}`}>
+          {item.productName}
+        </p>
+      ) : null}
+      {showVariant && variantLine ? (
+        <p className="mt-0.5 text-[10px] font-semibold text-neutral-800">{variantLine}</p>
+      ) : null}
       {showPrice ? <p className={priceClass}>Rs {Math.round(item.price)}</p> : null}
-      <div
-        className={`flex justify-center overflow-hidden border-t border-neutral-200 ${showPrice || variantLine ? 'mt-1.5 pt-1.5' : 'mt-1 pt-1'}`}
-      >
-        <BarcodeSvg value={item.barcode} compact={compact || layout === 'minimal'} />
-      </div>
+      {showBarcode ? (
+        <div
+          className={`flex justify-center overflow-hidden border-t border-neutral-200 ${showPrice || variantLine ? 'mt-1.5 pt-1.5' : 'mt-1 pt-1'}`}
+        >
+          <BarcodeSvg value={item.barcode} compact={compact || layout === 'minimal'} />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -183,6 +198,7 @@ function labelInnerHtml(
   const showName = item.showProductName !== false;
   const showVariant = item.showVariant !== false;
   const showPrice = item.showPrice !== false && layout !== 'minimal';
+  const showBarcode = item.showBarcode !== false;
   const logo = item.showLogo && item.logoSrc
     ? `<img class="logo" src="${escapeHtml(item.logoSrc)}" alt="" />`
     : '';
@@ -193,7 +209,7 @@ function labelInnerHtml(
       ${showName ? `<p class="name">${escapeHtml(item.productName)}</p>` : ''}
       ${showVariant && variantLine ? `<p class="variant">${escapeHtml(variantLine)}</p>` : ''}
       ${showPrice ? `<p class="price">Rs ${Math.round(item.price)}</p>` : ''}
-      <div class="barcode-wrap">${barcodeSvgMarkup(item.barcode, renderOpts)}</div>
+      ${showBarcode ? `<div class="barcode-wrap">${barcodeSvgMarkup(item.barcode, renderOpts)}</div>` : ''}
     `;
 }
 
@@ -480,6 +496,9 @@ export function buildFreeformStickerHtml(
       colour: item.colour,
       price: item.price,
       barcode: item.barcode,
+      customLines: item.customLines,
+      logoSrc: item.logoSrc,
+      showLogo: item.showLogo,
     })),
     style,
     labelsAcross,
@@ -493,11 +512,15 @@ function buildPrintHtml(
   creditLine = '',
   layout: LabelLayoutKey = 'standard',
   customStyle?: Pick<CustomLabelStyle, 'canvasWidthMm' | 'canvasHeightMm' | 'fields'> | null,
+  developerConfig?: ReturnType<typeof parseDeveloperConfig> | null,
 ): string {
   if (size.mode === 'thermal' && customStyle) {
+    const filteredStyle = developerConfig
+      ? filterFreeformStyleForBarcodeConfig(customStyle, developerConfig)
+      : customStyle;
     return buildFreeformStickerHtml(
       items,
-      customStyle,
+      filteredStyle,
       size.labelsAcross ?? 1,
       size.acrossGapMm ?? 0,
     );
@@ -616,28 +639,21 @@ export async function printBarcodeLabels(
   const layout = options.labelLayout ?? 'standard';
   const customStyle = options.customStyle ?? null;
   let printItems = items;
+  let developerConfig: ReturnType<typeof parseDeveloperConfig> | null = null;
   try {
     const settings = await api.getSettings();
-    const cfg = parseDeveloperConfig(settings.developerConfig);
-    const showLogo = isPrintFieldEnabled(cfg, 'barcode', 'logo');
+    developerConfig = parseDeveloperConfig(settings.developerConfig);
+    const showLogo = isPrintFieldEnabled(developerConfig, 'barcode', 'logo');
     const logoSrc = showLogo ? await resolveLogoDataUrl(settings.logoUrl) : null;
-    const displayName = cfg.barcodeBusinessName.trim() || settings.businessName;
-    const customLines = cfg.barcodeCustomLines.filter((line) => line.enabled).map((line) => line.text);
-    printItems = items.map((item) => ({
-      ...item,
-      businessName: displayName,
-      customLines,
-      logoSrc: logoSrc ?? item.logoSrc,
-      showLogo,
-      showShop: isPrintFieldEnabled(cfg, 'barcode', 'businessName'),
-      showProductName: isPrintFieldEnabled(cfg, 'barcode', 'productName'),
-      showVariant: isPrintFieldEnabled(cfg, 'barcode', 'variant'),
-      showPrice: isPrintFieldEnabled(cfg, 'barcode', 'price'),
-    }));
+    printItems = applyDeveloperBarcodeToLabelItems(items, {
+      cfg: developerConfig,
+      businessName: settings.businessName,
+      logoSrc,
+    });
   } catch {
     /* print with item defaults if settings unavailable */
   }
-  const html = buildPrintHtml(printItems, size, options.creditLine ?? '', layout, customStyle);
+  const html = buildPrintHtml(printItems, size, options.creditLine ?? '', layout, customStyle, developerConfig);
   const isSticker = size.mode === 'thermal';
   const labelsAcross = size.labelsAcross ?? 1;
   const acrossGapMm = size.acrossGapMm ?? 0;
@@ -692,6 +708,44 @@ export function BarcodeLabelModal({
   );
   const [printing, setPrinting] = useState(false);
   const [printMessage, setPrintMessage] = useState('');
+  const [previewItems, setPreviewItems] = useState<LabelItem[]>(items);
+  const [previewDeveloperConfig, setPreviewDeveloperConfig] = useState<ReturnType<typeof parseDeveloperConfig> | null>(
+    null,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadLabelPreviewConfig() {
+      try {
+        const settings = await api.getSettings();
+        if (cancelled) return;
+        const cfg = parseDeveloperConfig(settings.developerConfig);
+        const showLogo = isPrintFieldEnabled(cfg, 'barcode', 'logo');
+        const logoSrc = showLogo ? settings.logoUrl : null;
+        setPreviewDeveloperConfig(cfg);
+        setPreviewItems(
+          applyDeveloperBarcodeToLabelItems(items, {
+            cfg,
+            businessName: settings.businessName,
+            logoSrc,
+          }),
+        );
+      } catch {
+        if (!cancelled) {
+          setPreviewDeveloperConfig(null);
+          setPreviewItems(items);
+        }
+      }
+    }
+    void loadLabelPreviewConfig();
+    const off = onSettingsUpdated(() => {
+      void loadLabelPreviewConfig();
+    });
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, [items]);
 
   useEffect(() => {
     let cancelled = false;
@@ -735,7 +789,7 @@ export function BarcodeLabelModal({
   const bannerRollGapMm = size.rollGapMm ?? 3;
   const packingState = useMemo(() => {
     try {
-      const queue = allowQuantityEdit ? buildLabelPrintQueue(items, quantities) : items;
+      const queue = allowQuantityEdit ? buildLabelPrintQueue(previewItems, quantities) : previewItems;
       const across = size.labelsAcross ?? 1;
       const packedRows = packLabelsAcross(queue, across);
       const stats = summarizePackedLabels(packedRows, across);
@@ -748,7 +802,7 @@ export function BarcodeLabelModal({
         error: err instanceof Error ? err.message : 'Invalid label packing',
       };
     }
-  }, [allowQuantityEdit, items, quantities, size.labelsAcross]);
+  }, [allowQuantityEdit, previewItems, quantities, size.labelsAcross]);
   const printable = packingState.queue;
   const packedRows = packingState.packedRows;
   const packingStats = packingState.stats;
@@ -819,7 +873,7 @@ export function BarcodeLabelModal({
 
   const previewRows = useMemo(() => packedRows.slice(0, 8), [packedRows]);
 
-  const sampleForTest = items[0];
+  const sampleForTest = previewItems[0];
 
   const modal = (
     <div
@@ -1016,8 +1070,13 @@ export function BarcodeLabelModal({
                               colour: item.colour,
                               price: item.price,
                               barcode: item.barcode,
+                              customLines: item.customLines,
+                              logoSrc: item.logoSrc,
+                              showLogo: item.showLogo,
                             },
-                            selectedCustomStyle,
+                            previewDeveloperConfig
+                              ? filterFreeformStyleForBarcodeConfig(selectedCustomStyle, previewDeveloperConfig)
+                              : selectedCustomStyle,
                           ),
                         }}
                       />

@@ -1,5 +1,7 @@
 import JsBarcode from 'jsbarcode';
 import type { CustomLabelStyle, LabelStyleField } from './api';
+import type { DeveloperPrintConfig } from '../config/developerPrint';
+import { isPrintFieldEnabled, parseDeveloperConfig } from '../config/developerPrint';
 import { packLabelsAcross, stickerPageWidthMm } from './barcodeLabels';
 
 /** Sample product data used by the designer preview and print-path tests. */
@@ -10,6 +12,9 @@ export type FreeformLabelItem = {
   colour?: string | null;
   price: number;
   barcode: string;
+  customLines?: string[];
+  logoSrc?: string | null;
+  showLogo?: boolean;
 };
 
 export const SAMPLE_FREEFORM_LABEL_ITEM: FreeformLabelItem = {
@@ -218,6 +223,37 @@ function fieldBoxStyle(field: LabelStyleField): string {
     .join(';');
 }
 
+function freeformFieldEnabled(field: LabelStyleField, cfg: DeveloperPrintConfig): boolean {
+  switch (field.type) {
+    case 'shop':
+      return isPrintFieldEnabled(cfg, 'barcode', 'businessName');
+    case 'name':
+      return isPrintFieldEnabled(cfg, 'barcode', 'productName');
+    case 'size':
+    case 'colour':
+      return isPrintFieldEnabled(cfg, 'barcode', 'variant');
+    case 'price':
+      return isPrintFieldEnabled(cfg, 'barcode', 'price');
+    case 'barcode':
+      return isPrintFieldEnabled(cfg, 'barcode', 'barcode');
+    case 'customText':
+      return true;
+    default:
+      return true;
+  }
+}
+
+export function filterFreeformStyleForBarcodeConfig(
+  style: Pick<CustomLabelStyle, 'canvasWidthMm' | 'canvasHeightMm' | 'fields'>,
+  cfg: DeveloperPrintConfig | null | undefined,
+): Pick<CustomLabelStyle, 'canvasWidthMm' | 'canvasHeightMm' | 'fields'> {
+  const parsed = parseDeveloperConfig(cfg);
+  return {
+    ...style,
+    fields: style.fields.filter((field) => freeformFieldEnabled(field, parsed)),
+  };
+}
+
 /**
  * Shared freeform field markup used by the designer preview and sticker print path.
  * All geometry is in real mm — never px or designer zoom.
@@ -226,6 +262,17 @@ export function buildFreeformCanvasInnerHtml(
   item: FreeformLabelItem,
   style: Pick<CustomLabelStyle, 'canvasWidthMm' | 'canvasHeightMm' | 'fields'>,
 ): string {
+  const logo =
+    item.showLogo && item.logoSrc
+      ? `<img src="${escapeHtml(item.logoSrc)}" alt="" style="position:absolute;left:1mm;top:1mm;max-height:8mm;max-width:18mm;object-fit:contain;" />`
+      : '';
+  const customLines = (item.customLines ?? [])
+    .map(
+      (line, idx) =>
+        `<div class="ff-custom-line" style="position:absolute;left:1mm;top:${9 + idx * 3.2}mm;width:${Math.max(1, style.canvasWidthMm - 2)}mm;text-align:center;font-size:7pt;font-weight:700;line-height:1.1;">${escapeHtml(line)}</div>`,
+    )
+    .join('');
+
   const parts = style.fields.map((field) => {
     const align = field.align ?? 'center';
     const font = resolvePrintSafeFont(field.fontFamily);
@@ -241,7 +288,7 @@ export function buildFreeformCanvasInnerHtml(
     return `<div class="ff-field" data-field-id="${escapeHtml(field.id)}" data-field-type="${escapeHtml(field.type)}" style="${box};display:flex;align-items:center;justify-content:${justify};">${escapeHtml(text)}</div>`;
   });
 
-  return `<div class="ff-canvas" style="position:relative;width:${style.canvasWidthMm}mm;height:${style.canvasHeightMm}mm;overflow:hidden;background:#fff;color:#111;font-family:Arial,Helvetica,sans-serif;">${parts.join('')}</div>`;
+  return `<div class="ff-canvas" style="position:relative;width:${style.canvasWidthMm}mm;height:${style.canvasHeightMm}mm;overflow:hidden;background:#fff;color:#111;font-family:Arial,Helvetica,sans-serif;">${logo}${customLines}${parts.join('')}</div>`;
 }
 
 /**

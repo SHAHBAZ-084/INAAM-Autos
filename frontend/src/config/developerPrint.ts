@@ -141,3 +141,43 @@ export function printFieldLabel(
   const fields = surface === 'invoice' ? cfg.invoiceFields : cfg.barcodeFields;
   return fields.find((f) => f.key === key)?.label ?? key;
 }
+
+export type DeveloperBarcodeLabelOptions = {
+  cfg: DeveloperPrintConfig | null | undefined;
+  businessName: string;
+  logoSrc?: string | null;
+};
+
+/** Apply developer barcode label toggles + shop-name override to label rows (print + preview). */
+export function applyDeveloperBarcodeToLabelItems<
+  T extends {
+    businessName: string;
+    customLines?: string[];
+    logoSrc?: string | null;
+    showLogo?: boolean;
+    showShop?: boolean;
+    showProductName?: boolean;
+    showVariant?: boolean;
+    showPrice?: boolean;
+    showBarcode?: boolean;
+  },
+>(items: T[], options: DeveloperBarcodeLabelOptions): T[] {
+  const cfg = parseDeveloperConfig(options.cfg);
+  const displayName = cfg.barcodeBusinessName.trim() || options.businessName.trim();
+  const customLines = cfg.barcodeCustomLines.filter((line) => line.enabled).map((line) => line.text);
+  const showLogo = isPrintFieldEnabled(cfg, 'barcode', 'logo');
+  const logoSrc = showLogo ? options.logoSrc ?? null : null;
+
+  return items.map((item) => ({
+    ...item,
+    businessName: displayName || item.businessName,
+    customLines,
+    logoSrc,
+    showLogo,
+    showShop: isPrintFieldEnabled(cfg, 'barcode', 'businessName'),
+    showProductName: isPrintFieldEnabled(cfg, 'barcode', 'productName'),
+    showVariant: isPrintFieldEnabled(cfg, 'barcode', 'variant'),
+    showPrice: isPrintFieldEnabled(cfg, 'barcode', 'price'),
+    showBarcode: isPrintFieldEnabled(cfg, 'barcode', 'barcode'),
+  }));
+}
