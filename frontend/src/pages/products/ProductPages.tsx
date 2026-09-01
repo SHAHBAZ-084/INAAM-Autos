@@ -1,0 +1,1328 @@
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { APP_DISPLAY_NAME } from '../../config/brand';
+import { BarcodeLabelModal, type LabelItem } from '../../components/products/BarcodeLabel';
+import {
+  api,
+  type CreateProductInput,
+  type Product,
+  type ProductCategory,
+  type ProductImportPreview,
+  type ProductVariantInput,
+  type StockMovement,
+} from '../../lib/api';
+import { formatDate, formatMoney, formatStockMovementType } from '../../lib/format';
+import { confirmAction } from '../../lib/confirmAction';
+import { Plus, Printer, Trash2 } from 'lucide-react';
+import { DangerButton, Feedback, FieldLabel, GhostButton, IconButton, LoadingState, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
+
+type VariantDraft = ProductVariantInput & {
+  key: string;
+  existingId?: number;
+  productCode?: string;
+  barcode?: string | null;
+  /** Stock when the edit form loaded — used to sync adjustments on save. */
+  originalStock?: number;
+  /** True when shopkeeper chose Custom… size (even before typing). */
+  sizeCustom?: boolean;
+  colourCustom?: boolean;
+};
+
+const SIZE_PRESETS = ['Std', 'Front', 'Rear', 'Left', 'Right', '12V', '24V'] as const;
+const COLOUR_PRESETS = ['Black', 'White', 'Silver', 'Red', 'Blue', 'Grey', 'Chrome', 'Brown'] as const;
+const SELECT_CLASS = 'w-full rounded-lg border border-border bg-surface2 px-3 py-2 text-sm';
+
+function emptyVariant(): VariantDraft {
+  return {
+    key: crypto.randomUUID(),
+    size: '',
+    colour: '',
+    currentStock: 0,
+    salePrice: null,
+    purchasePrice: null,
+    sizeCustom: false,
+    colourCustom: false,
+  };
+}
+
+function sizeSelectValue(v: VariantDraft): string {
+  if (SIZE_PRESETS.includes((v.size ?? '') as (typeof SIZE_PRESETS)[number])) return v.size ?? '';
+  if (v.sizeCustom || (v.size ?? '') !== '') return '__custom__';
+  return '';
+}
+
+function colourSelectValue(v: VariantDraft): string {
+  if (COLOUR_PRESETS.includes((v.colour ?? '') as (typeof COLOUR_PRESETS)[number])) return v.colour ?? '';
+  if (v.colourCustom || (v.colour ?? '') !== '') return '__custom__';
+  return '';
+}
+
+function variantLabel(variant: { size?: string | null; colour?: string | null; productCode?: string }) {
+  return [variant.size, variant.colour].filter(Boolean).join('/') || variant.productCode || 'Variant';
+}
+
+function labelItemsFromProduct(product: Product, businessName: string): LabelItem[] {
+  if (product.variants?.length) {
+    return product.variants.filter((variant) => variant.barcode).map((variant) => ({
+      key: `variant-${variant.id}`,
+      businessName,
+      productName: product.name,
+      size: variant.size,
+      colour: variant.colour,
+      price: variant.salePrice ?? product.salePrice,
+      barcode: variant.barcode!,
+      productCode: variant.productCode,
+      defaultQty: Math.max(1, variant.currentStock || 1),
+    }));
+  }
+  return product.barcode
+    ? [{
+        key: `product-${product.id}`,
+        businessName,
+        productName: product.name,
+        price: product.salePrice,
+        barcode: product.barcode,
+        productCode: product.productCode,
+        defaultQty: Math.max(1, product.currentStock || 1),
+      }]
+    : [];
+}
+
+export function ProductsListPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [result, setResult] = useState<Awaited<ReturnType<typeof api.listProducts>> | null>(null);
+  const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [search, setSearch] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [stockStatus, setStockStatus] = useState<'all' | 'in_stock' | 'out_of_stock' | 'low_stock' | 'damaged'>('all');
+  const [page, setPage] = useState(1);
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const [preview, setPreview] = useState<ProductImportPreview | null>(null);
+  const [labelItems, setLabelItems] = useState<LabelItem[] | null>(null);
+  const [labelSizeKey, setLabelSizeKey] = useState('58x40');
+  const [labelStyleKey, setLabelStyleKey] = useState('builtin:standard');
+  const [allowQtyEdit, setAllowQtyEdit] = useState(false);
+  const [businessName, setBusinessName] = useState(APP_DISPLAY_NAME);
+  const [creditLine, setCreditLine] = useState('');
+  const [printerName, setPrinterName] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const searchRequestId = useRef(0);
+
+  const load = useCallback(async () => {
+    const requestId = ++searchRequestId.current;
+    setLoading(true);
+    setError('');
+    try {
+      const next = await api.listProducts({
+        page,
+        pageSize: 20,
+        search: search.trim() || undefined,
+        categoryId: categoryId ? Number(categoryId) : undefined,
+        stockStatus,
+      });
+      if (requestId !== searchRequestId.current) return;
+      setResult(next);
+    } catch (err) {
+      if (requestId !== searchRequestId.current) return;
+      setError(err instanceof Error ? err.message : 'Failed to load products');
+    } finally {
+      if (requestId === searchRequestId.current) setLoading(false);
+    }
+  }, [categoryId, page, search, stockStatus]);
+
+  useEffect(() => {
+    Promise.all([api.listProductCategories(), api.getSettings()])
+      .then(([cats, settings]) => {
+        setCategories(cats);
+        setBusinessName(settings.businessName);
+        setCreditLine(settings.developerCreditLine ?? '');
+        setLabelSizeKey(settings.barcodeLabelSize || '58x40');
+        setLabelStyleKey(settings.barcodeLabelStyle || 'builtin:standard');
+        setPrinterName(settings.printerName);
+      })
+      .catch(() => setCategories([]));
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void load();
+    }, search.trim() ? 250 : 0);
+    return () => window.clearTimeout(timer);
+  }, [load, search]);
+
+  useEffect(() => {
+    const state = location.state as { printAfterSaveId?: number; savedName?: string } | null;
+    if (!state?.printAfterSaveId) return;
+    const productId = state.printAfterSaveId;
+    const savedName = state.savedName;
+    navigate(location.pathname, { replace: true, state: null });
+    setSuccessMessage(savedName ? `Saved “${savedName}”. Preview & print barcode labels.` : 'Product saved. Preview & print barcode labels.');
+    void api
+      .getProduct(productId)
+      .then((product) => {
+        const items = labelItemsFromProduct(product, businessName);
+        if (items.length) {
+          setAllowQtyEdit(true);
+          setLabelItems(items);
+          setExpanded(product.id);
+        }
+        void load();
+      })
+      .catch(() => undefined);
+  }, [location.state, location.pathname, navigate, businessName, load]);
+
+  async function downloadTemplate() {
+    setError('');
+    try {
+      const blob = await api.downloadProductImportTemplate();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'inaam-autos-products-template.xlsx';
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Template download failed');
+    }
+  }
+
+  async function previewImport(file: File) {
+    setImporting(true);
+    setError('');
+    setPreview(null);
+    try {
+      setPreview(await api.previewProductImport(file));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Import preview failed');
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function commitImport() {
+    if (!preview?.commitPayload.length) return;
+    setImporting(true);
+    setError('');
+    try {
+      const committed = await api.commitProductImport(preview.commitPayload);
+      const settings = await api.getSettings();
+      setPreview(null);
+      setAllowQtyEdit(false);
+      setLabelSizeKey(settings.barcodeLabelSize || '50x30');
+      setLabelStyleKey(settings.barcodeLabelStyle || 'builtin:standard');
+      setLabelItems(committed.products.flatMap((product) => labelItemsFromProduct(product, settings.businessName)));
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Import failed');
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  return (
+    <PageShell title="Products" subtitle="Manage inventory, variants, barcodes, and stock" actions={<div className="flex flex-wrap gap-2">
+      <Link to="/products"><SecondaryButton type="button">Products hub</SecondaryButton></Link>
+      <SecondaryButton onClick={() => void downloadTemplate()}>Download Template</SecondaryButton>
+      <label className="btn-secondary cursor-pointer">Import Stock<input className="hidden" type="file" accept=".xlsx,.xls" onChange={(event) => {
+        const file = event.target.files?.[0];
+        if (file) void previewImport(file);
+        event.currentTarget.value = '';
+      }} /></label>
+      <Link to="/products/add"><PrimaryButton type="button"><Plus className="mr-1.5 inline h-4 w-4" aria-hidden />Add Product</PrimaryButton></Link>
+    </div>}>
+      <Panel className="mb-4"><div className="grid gap-4 md:grid-cols-4">
+        <div className="md:col-span-2"><FieldLabel>Search</FieldLabel><TextInput value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Name, product code, or barcode" /></div>
+        <div><FieldLabel>Category</FieldLabel><select className={SELECT_CLASS} value={categoryId} onChange={(event) => { setCategoryId(event.target.value); setPage(1); }}><option value="">All categories</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div>
+        <div>
+          <FieldLabel>Stock details</FieldLabel>
+          <select
+            className={SELECT_CLASS}
+            value={stockStatus}
+            onChange={(event) => {
+              setStockStatus(event.target.value as typeof stockStatus);
+              setPage(1);
+            }}
+          >
+            <option value="all">All stock</option>
+            <option value="in_stock">Existing stock</option>
+            <option value="out_of_stock">Out of stock</option>
+            <option value="low_stock">Low stock</option>
+            <option value="damaged">Damaged stock</option>
+          </select>
+        </div>
+      </div></Panel>
+      {error ? <Feedback variant="error" className="mb-4">{error}</Feedback> : null}
+      {successMessage ? <Feedback variant="success" className="mb-4">{successMessage}</Feedback> : null}
+      {preview ? <Panel className="mb-4"><h2 className="text-lg font-semibold">Import preview</h2>
+        <p className="mt-2 text-sm text-textSecondary">
+          {preview.productsToCreate} new · {preview.productsToMerge ?? 0} merge stock · {preview.validCount} valid · {preview.errorCount} errors
+        </p>
+        <p className="mt-1 text-xs text-textMuted">
+          Template columns: Product Name, Category, Total Stock. Matching names add stock (e.g. 17 + 20 = 37). New rows are marked Need Variants until you edit and add size/colour.
+        </p>
+        {preview.errors.length ? <ul className="mt-3 list-disc pl-5 text-sm text-danger">{preview.errors.map((item) => <li key={`${item.rowNumber}-${item.message}`}>Row {item.rowNumber}: {item.message}</li>)}</ul> : null}
+        {preview.products.length ? (
+          <ul className="mt-3 max-h-48 space-y-1 overflow-y-auto text-sm">
+            {preview.products.map((p) => (
+              <li key={`${p.action}-${p.name}`} className="flex justify-between gap-2 border-b border-border/50 py-1">
+                <span>
+                  {p.name}{' '}
+                  <span className="text-xs text-textMuted">
+                    ({p.action === 'merge' ? 'merge +' : 'new'}{p.totalStock}
+                    {p.needsVariants ? ' · Need Variants' : ''})
+                  </span>
+                </span>
+                <span className="text-textSecondary">{p.category}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <div className="mt-4 flex gap-2"><SecondaryButton onClick={() => setPreview(null)}>Cancel</SecondaryButton><PrimaryButton onClick={() => void commitImport()} disabled={importing || !preview.commitPayload.length}>{importing ? 'Importing…' : 'Confirm Import'}</PrimaryButton></div>
+      </Panel> : null}
+      <Panel><div className="overflow-x-auto">{loading ? <LoadingState className="py-6" /> : null}<table className="app-data-table min-w-full text-sm"><thead><tr className="text-left text-textSecondary">
+        <th className="w-12 px-2 py-2 font-medium">Sr No.</th>
+        <th className="w-10 px-2 py-2" />
+        <th className="px-2 py-2 font-medium">Name</th>
+        <th className="px-2 py-2 font-medium">Category</th>
+        <th className="px-2 py-2 text-right font-medium">Total stock</th>
+        <th className="px-2 py-2 text-right font-medium">Damaged</th>
+        <th className="px-2 py-2 text-right font-medium">Sale price</th>
+        <th className="px-2 py-2 text-right font-medium">Purchase</th>
+        <th className="px-2 py-2 font-medium">Actions</th>
+      </tr></thead><tbody>
+        {result?.items.map((product, index) => (
+          <ProductListRow
+            key={product.id}
+            srNo={(result.page - 1) * result.pageSize + index + 1}
+            product={product}
+            businessName={businessName}
+            expanded={expanded === product.id}
+            onToggle={() => setExpanded((id) => (id === product.id ? null : product.id))}
+            onGenerateBarcode={() => {
+              const items = labelItemsFromProduct(product, businessName);
+              if (!items.length) {
+                setError('No barcodes available for this product yet.');
+                return;
+              }
+              setSuccessMessage('');
+              setAllowQtyEdit(true);
+              setLabelItems(items);
+            }}
+            deleting={deletingId === product.id}
+            deleteDisabled={deletingId != null}
+            onDeleteStart={() => {
+              void (async () => {
+                const ok = await confirmAction(
+                  `Permanently delete "${product.name}"? This cannot be undone.`,
+                  { title: 'Delete product', confirmLabel: 'Delete' },
+                );
+                if (!ok) return;
+                const snapshot = result;
+                setDeletingId(product.id);
+                setResult((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        items: prev.items.filter((p) => p.id !== product.id),
+                        total: Math.max(0, prev.total - 1),
+                      }
+                    : prev,
+                );
+                try {
+                  await api.deleteProduct(product.id);
+                  setSuccessMessage(`“${product.name}” removed from the list.`);
+                  void load();
+                } catch (err) {
+                  setResult(snapshot);
+                  setError(err instanceof Error ? err.message : 'Failed to delete product');
+                } finally {
+                  setDeletingId(null);
+                }
+              })();
+            }}
+          />
+        ))}
+        {!loading && result?.items.length === 0 ? <tr><td colSpan={9} className="px-2 py-8 text-center text-textSecondary">No products found.</td></tr> : null}
+      </tbody></table></div>
+      {result ? <div className="mt-4 flex items-center justify-between"><p className="text-sm text-textSecondary">Page {result.page} of {result.totalPages} ({result.total} products)</p><div className="flex gap-2"><SecondaryButton disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>Previous</SecondaryButton><SecondaryButton disabled={page >= result.totalPages} onClick={() => setPage((value) => value + 1)}>Next</SecondaryButton></div></div> : null}
+      </Panel>
+      {labelItems?.length ? (
+        <BarcodeLabelModal
+          items={labelItems}
+          labelSizeKey={labelSizeKey}
+          labelStyleKey={labelStyleKey}
+          allowQuantityEdit={allowQtyEdit}
+          creditLine={creditLine}
+          printerName={printerName}
+          title="Print Labels — confirm barcode identity before print"
+          onClose={() => {
+            setLabelItems(null);
+            setAllowQtyEdit(false);
+            setSuccessMessage('');
+          }}
+        />
+      ) : null}
+    </PageShell>
+  );
+}
+
+function ProductListRow({
+  srNo,
+  product,
+  businessName,
+  expanded,
+  onToggle,
+  onGenerateBarcode,
+  deleting,
+  deleteDisabled,
+  onDeleteStart,
+}: {
+  srNo: number;
+  product: Product;
+  businessName: string;
+  expanded: boolean;
+  onToggle: () => void;
+  onGenerateBarcode: () => void;
+  deleting: boolean;
+  deleteDisabled: boolean;
+  onDeleteStart: () => void;
+}) {
+  const targets = labelItemsFromProduct(product, businessName);
+  const hasVariants = (product.variants?.length ?? 0) > 0;
+
+  return (
+    <>
+      <tr className="border-b border-border/60 hover:bg-surface1">
+        <td className="px-2 py-2 text-textSecondary">{srNo}</td>
+        <td className="px-2 py-2">
+          <GhostButton className="p-1" aria-label={`${expanded ? 'Hide' : 'Show'} variants`} onClick={onToggle}>
+            {expanded ? '⌄' : '›'}
+          </GhostButton>
+        </td>
+        <td className="px-2 py-2">
+          <Link className="font-medium text-accent hover:underline" to={`/products/${product.id}`}>{product.name}</Link>
+          {product.needsVariants ? <span className="ml-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-medium text-amber-900 dark:text-amber-200">*Need Variants</span> : null}
+          {product.isOutOfStock || product.currentStock <= 0 ? (
+            <span className="ml-2 rounded bg-surface1 px-1.5 py-0.5 text-xs text-textMuted">Out of stock</span>
+          ) : product.isLowStock ? (
+            <span className="ml-2 rounded bg-bgDanger px-1.5 py-0.5 text-xs text-danger">Low stock</span>
+          ) : null}
+          {(product.damagedStock ?? 0) > 0 ? (
+            <span className="ml-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-medium text-amber-900 dark:text-amber-200">
+              Damaged {product.damagedStock}
+            </span>
+          ) : null}
+          {product.costNotSet ? <span className="ml-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs text-amber-800 dark:text-amber-200">Cost not set</span> : null}
+          {!product.isActive ? <span className="ml-2 rounded bg-surface1 px-1.5 py-0.5 text-xs text-textMuted">Inactive</span> : null}
+        </td>
+        <td className="px-2 py-2">{product.category?.name ?? '—'}</td>
+        <td className="px-2 py-2 text-right">{product.currentStock}</td>
+        <td className="px-2 py-2 text-right text-amber-800 dark:text-amber-200">
+          {(product.damagedStock ?? 0) > 0 ? product.damagedStock : '—'}
+        </td>
+        <td className="px-2 py-2 text-right">{formatMoney(product.salePrice)}</td>
+        <td className="px-2 py-2 text-right">
+          {product.purchasePrice > 0 ? formatMoney(product.purchasePrice) : '—'}
+        </td>
+        <td className="px-2 py-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Link to={`/products/${product.id}`}>
+              <SecondaryButton type="button" className="!px-2 !py-1 text-xs">Edit</SecondaryButton>
+            </Link>
+            {targets.length ? (
+              <GhostButton type="button" className="text-xs text-accent" onClick={onGenerateBarcode}>
+                <Printer className="mr-1 inline h-3.5 w-3.5" aria-hidden />
+                Barcode
+              </GhostButton>
+            ) : null}
+            <GhostButton
+              type="button"
+              className="text-xs text-danger"
+              disabled={deleteDisabled}
+              onClick={onDeleteStart}
+            >
+              {deleting ? 'Deleting…' : 'Delete'}
+            </GhostButton>
+          </div>
+        </td>
+      </tr>
+      {expanded ? (
+        <tr className="border-b border-border/60 bg-surface1">
+          <td />
+          <td />
+          <td colSpan={7} className="p-3">
+            {hasVariants ? (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-textSecondary">
+                    <th>Variant</th>
+                    <th>Colour / finish</th>
+                    <th className="text-right">Sale</th>
+                    <th className="text-right">Purchase</th>
+                    <th className="text-right">Stock</th>
+                    <th className="text-right">Damaged</th>
+                    <th>Status</th>
+                    <th>Barcode / Product Code</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {product.variants!.map((variant) => (
+                    <tr key={variant.id}>
+                      <td>{variant.size ?? '—'}</td>
+                      <td>{variant.colour ?? '—'}</td>
+                      <td className="text-right">{formatMoney(variant.salePrice ?? product.salePrice)}</td>
+                      <td className="text-right">
+                        {variant.purchasePrice != null
+                          ? formatMoney(variant.purchasePrice)
+                          : product.purchasePrice > 0
+                            ? formatMoney(product.purchasePrice)
+                            : '—'}
+                      </td>
+                      <td className="text-right">{variant.currentStock}</td>
+                      <td className="text-right">{(variant.damagedStock ?? 0) > 0 ? variant.damagedStock : '—'}</td>
+                      <td>
+                        {variant.isOutOfStock || variant.currentStock <= 0 ? (
+                          <span className="rounded bg-surface1 px-1.5 py-0.5 text-xs text-textMuted">
+                            Out of stock
+                          </span>
+                        ) : variant.isLowStock ? (
+                          <span className="rounded bg-bgDanger px-1.5 py-0.5 text-xs text-danger">
+                            Low stock
+                          </span>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td className="font-mono text-xs">{variant.barcode ?? '—'} / {variant.productCode}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="text-sm text-textSecondary">
+                No variants. Product Code: <span className="font-mono">{product.productCode}</span>
+                {product.barcode ? <> · Barcode: <span className="font-mono">{product.barcode}</span></> : null}
+                {(product.damagedStock ?? 0) > 0 ? <> · Damaged: {product.damagedStock}</> : null}
+              </p>
+            )}
+          </td>
+        </tr>
+      ) : null}
+    </>
+  );
+}
+
+function StockAdjustModal({
+  product,
+  onClose,
+  onDone,
+}: {
+  product: Product;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const hasVariants = (product.variants?.length ?? 0) > 0;
+  const [variantId, setVariantId] = useState<number | ''>('');
+  const [direction, setDirection] = useState<'add' | 'reduce' | 'damage' | 'discard_damaged'>('add');
+  const [quantity, setQuantity] = useState('1');
+  const [note, setNote] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError('');
+    const qty = Number(quantity);
+    if (!(qty > 0 && Number.isInteger(qty))) {
+      setError('Quantity must be a positive whole number');
+      return;
+    }
+    if (hasVariants && !variantId) {
+      setError('Select a variant');
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.adjustProductStock(product.id, {
+        variantId: variantId ? Number(variantId) : undefined,
+        quantity: qty,
+        direction,
+        note: note.trim() || undefined,
+      });
+      onDone();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Stock adjustment failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div data-page-modal="open" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <Panel className="w-full max-w-md">
+        <h2 className="text-lg font-semibold text-textPrimary">Adjust Stock</h2>
+        <p className="mt-1 text-sm text-textSecondary">
+          {product.name} · Sellable {product.currentStock}
+          {(product.damagedStock ?? 0) > 0 ? ` · Damaged ${product.damagedStock}` : ''}
+        </p>
+        <form className="mt-4 space-y-4" onSubmit={onSubmit}>
+          {hasVariants ? (
+            <div>
+              <FieldLabel>Variant</FieldLabel>
+              <select
+                className="w-full rounded-lg border border-border bg-surface2 px-3 py-2 text-sm"
+                value={variantId}
+                onChange={(e) => setVariantId(e.target.value ? Number(e.target.value) : '')}
+                required
+              >
+                <option value="">Select variant</option>
+                {product.variants!.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {variantLabel(v)} — stock {v.currentStock}
+                    {(v.damagedStock ?? 0) > 0 ? ` · damaged ${v.damagedStock}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          <div>
+            <FieldLabel>Stock details action</FieldLabel>
+            <select
+              className="w-full rounded-lg border border-border bg-surface2 px-3 py-2 text-sm"
+              value={direction}
+              onChange={(e) => setDirection(e.target.value as typeof direction)}
+            >
+              <option value="add">Add sellable stock</option>
+              <option value="reduce">Reduce sellable stock</option>
+              <option value="damage">Move sellable → damaged</option>
+              <option value="discard_damaged">Discard damaged stock</option>
+            </select>
+            <p className="mt-1 text-xs text-textMuted">
+              Damaged stock is unsellable and listed under Damaged stock filter.
+            </p>
+          </div>
+          <div>
+            <FieldLabel>Quantity</FieldLabel>
+            <TextInput type="number" min="1" step="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} required />
+          </div>
+          <div>
+            <FieldLabel>Note (optional)</FieldLabel>
+            <TextInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="Reason for adjustment" />
+          </div>
+          {error ? <Feedback variant="error">{error}</Feedback> : null}
+          <div className="flex justify-end gap-2">
+            <SecondaryButton type="button" onClick={onClose}>Cancel</SecondaryButton>
+            <PrimaryButton type="submit" disabled={saving}>{saving ? 'Saving…' : 'Apply'}</PrimaryButton>
+          </div>
+        </form>
+      </Panel>
+    </div>
+  );
+}
+
+function StockHistoryPanel({ productId, refreshKey }: { productId: number; refreshKey: number }) {
+  const [movements, setMovements] = useState<StockMovement[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    api
+      .listStockMovements(productId, { pageSize: 50 })
+      .then((r) => setMovements(r.items))
+      .catch(() => setMovements([]))
+      .finally(() => setLoading(false));
+  }, [productId, refreshKey]);
+
+  return (
+    <Panel>
+      <h2 className="mb-4 text-lg font-semibold text-textPrimary">Stock History</h2>
+      {loading ? (
+        <p className="text-sm text-textSecondary">Loading…</p>
+      ) : movements.length === 0 ? (
+        <p className="text-sm text-textSecondary">No stock movements yet.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-textSecondary">
+                <th className="px-2 py-2 font-medium">Date</th>
+                <th className="px-2 py-2 font-medium">Type</th>
+                <th className="px-2 py-2 font-medium">Variant</th>
+                <th className="px-2 py-2 font-medium text-right">Qty</th>
+                <th className="px-2 py-2 font-medium">Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {movements.map((m) => (
+                <tr key={m.id} className="border-b border-border/60">
+                  <td className="px-2 py-2">{formatDate(m.createdAt)}</td>
+                  <td className="px-2 py-2">{formatStockMovementType(m.type)}</td>
+                  <td className="px-2 py-2">
+                    {m.variant ? variantLabel(m.variant) : '—'}
+                  </td>
+                  <td className="px-2 py-2 text-right">{m.quantity}</td>
+                  <td className="px-2 py-2">{m.note ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+export function ProductFormPage({ mode }: { mode: 'add' | 'edit' }) {
+  const navigate = useNavigate();
+  const params = useParams();
+  const productId = mode === 'edit' ? Number(params.id) : null;
+  const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [businessName, setBusinessName] = useState(APP_DISPLAY_NAME);
+  const [creditLine, setCreditLine] = useState('');
+  const [labelSizeKey, setLabelSizeKey] = useState('58x40');
+  const [labelStyleKey, setLabelStyleKey] = useState('builtin:standard');
+  const [printerName, setPrinterName] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const [categoryId, setCategoryId] = useState<string>('');
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [brand, setBrand] = useState('');
+  const [purchasePrice, setPurchasePrice] = useState('');
+  const [salePrice, setSalePrice] = useState('');
+  const [lowStockLimit, setLowStockLimit] = useState('');
+  const [openingStock, setOpeningStock] = useState('');
+  const [notes, setNotes] = useState('');
+  const [variants, setVariants] = useState<VariantDraft[]>([]);
+  const [product, setProduct] = useState<Product | null>(null);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [showAdjust, setShowAdjust] = useState(false);
+  const [labelItems, setLabelItems] = useState<LabelItem[] | null>(null);
+  const [historyKey, setHistoryKey] = useState(0);
+
+  useEffect(() => {
+    Promise.all([api.listProductCategories(), api.getSettings()])
+      .then(([cats, settings]) => {
+        setCategories(cats);
+        setBusinessName(settings.businessName);
+        setCreditLine(settings.developerCreditLine ?? '');
+        setLabelSizeKey(settings.barcodeLabelSize || '58x40');
+        setLabelStyleKey(settings.barcodeLabelStyle || 'builtin:standard');
+        setPrinterName(settings.printerName);
+      })
+      .catch(() => setCategories([]));
+  }, []);
+
+  useEffect(() => {
+    if (mode !== 'edit' || !productId) return;
+    api
+      .getProduct(productId)
+      .then((p) => {
+        setProduct(p);
+        setName(p.name);
+        setCategoryId(p.categoryId ? String(p.categoryId) : '');
+        setBrand(p.brand ?? '');
+        setPurchasePrice(p.purchasePrice > 0 ? String(p.purchasePrice) : '');
+        setSalePrice(String(p.salePrice));
+        setLowStockLimit(p.lowStockLimit != null ? String(p.lowStockLimit) : '');
+        setOpeningStock(String(p.currentStock));
+        setNotes(p.notes ?? '');
+        setVariants(
+          (p.variants ?? []).map((v) => ({
+            key: String(v.id),
+            existingId: v.id,
+            size: v.size ?? '',
+            colour: v.colour ?? '',
+            productCode: v.productCode,
+            barcode: v.barcode,
+            purchasePrice: v.purchasePrice,
+            salePrice: v.salePrice,
+            currentStock: v.currentStock,
+            originalStock: v.currentStock,
+            sizeCustom: !!(v.size && !(SIZE_PRESETS as readonly string[]).includes(v.size)),
+            colourCustom: !!(v.colour && !(COLOUR_PRESETS as readonly string[]).includes(v.colour)),
+          })),
+        );
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load product'));
+  }, [mode, productId]);
+
+  const allocatedStock = useMemo(
+    () => variants.reduce((total, variant) => total + (Number(variant.currentStock) || 0), 0),
+    [variants],
+  );
+  const totalStock = Number(openingStock) || 0;
+  const remainingStock = totalStock - allocatedStock;
+  const stockMisallocated = variants.length > 0 && totalStock > 0 && remainingStock < 0;
+  const printableLabels = useMemo(
+    () => (product ? labelItemsFromProduct(product, businessName) : []),
+    [product, businessName],
+  );
+
+  async function ensureCategoryId(): Promise<number | null> {
+    if (categoryId !== '__new__') return categoryId ? Number(categoryId) : null;
+    if (!newCategoryName.trim()) throw new Error('Enter a name for the new category');
+    const created = await api.createProductCategory(newCategoryName.trim());
+    setCategories((previous) => [...previous, created].sort((a, b) => a.name.localeCompare(b.name)));
+    setCategoryId(String(created.id));
+    return created.id;
+  }
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError('');
+    setMessage('');
+    const hasVariants = variants.some((v) => v.size?.trim() || v.colour?.trim());
+    if (hasVariants && totalStock > 0 && allocatedStock > totalStock) {
+      setError(
+        `Variant stock (${allocatedStock}) exceeds Total Stock (${totalStock}). Reduce variant quantities or restore total stock before saving.`,
+      );
+      return;
+    }
+    if (hasVariants) {
+      const missingPrice = variants
+        .filter((v) => v.size?.trim() || v.colour?.trim() || Number(v.currentStock) > 0 || v.existingId)
+        .some((v) => v.salePrice == null || Number(v.salePrice) < 0 || Number.isNaN(Number(v.salePrice)));
+      if (missingPrice) {
+        setError('Each variant needs a sale price (purchase price is optional).');
+        return;
+      }
+    } else {
+      const productSale = Number(salePrice);
+      if (!salePrice.trim() || Number.isNaN(productSale) || productSale < 0) {
+        setError('Enter a sale price (variants are optional — e.g. accessories can use the product barcode).');
+        return;
+      }
+    }
+    setSaving(true);
+    try {
+      const resolvedCategoryId = await ensureCategoryId();
+      const variantRows = variants.filter(
+        (v) => v.size?.trim() || v.colour?.trim() || Number(v.currentStock) > 0 || v.salePrice != null || v.existingId,
+      );
+      const variantPrices = variantRows
+        .map((v) => Number(v.salePrice))
+        .filter((n) => !Number.isNaN(n) && n >= 0);
+      const productSalePrice = hasVariants && variantPrices.length
+        ? Math.min(...variantPrices)
+        : Number(salePrice) || 0;
+      const variantPurchases = variantRows
+        .map((v) => (v.purchasePrice != null ? Number(v.purchasePrice) : NaN))
+        .filter((n) => !Number.isNaN(n) && n >= 0);
+      const parsedPurchase = hasVariants && variantPurchases.length
+        ? Math.min(...variantPurchases)
+        : purchasePrice.trim()
+          ? Number(purchasePrice)
+          : undefined;
+      const payload: CreateProductInput = {
+        name,
+        categoryId: resolvedCategoryId,
+        salePrice: productSalePrice,
+        ...(parsedPurchase !== undefined ? { purchasePrice: parsedPurchase } : {}),
+      };
+
+      if (mode === 'add') {
+        const variantPayload = variantRows.map(
+          ({ key: _key, existingId: _existingId, productCode: _productCode, sizeCustom: _sc, colourCustom: _cc, barcode: _bc, originalStock: _os, ...v }) => ({
+            size: v.size?.trim() || null,
+            colour: v.colour?.trim() || null,
+            currentStock: Number(v.currentStock) || 0,
+            salePrice: v.salePrice != null ? Number(v.salePrice) : null,
+            purchasePrice: v.purchasePrice != null ? Number(v.purchasePrice) : null,
+          }),
+        );
+
+        const created = await api.createProduct({
+          ...payload,
+          brand: brand.trim() || null,
+          lowStockLimit: lowStockLimit.trim() ? Number(lowStockLimit) : null,
+          notes: notes.trim() || null,
+          variants: variantPayload.length > 0 ? variantPayload : undefined,
+          openingStock: totalStock,
+        });
+
+        navigate('/products/list', {
+          state: { printAfterSaveId: created.id, savedName: created.name },
+        });
+      } else if (productId) {
+        await api.updateProduct(productId, {
+          ...payload,
+          ...(parsedPurchase !== undefined ? { purchasePrice: parsedPurchase } : { purchasePrice: 0 }),
+          brand: brand.trim() || null,
+          lowStockLimit: lowStockLimit.trim() ? Number(lowStockLimit) : null,
+          notes: notes.trim() || null,
+        });
+
+        if (variants.length === 0) {
+          const nextStock = Math.max(0, Number(totalStock) || 0);
+          const prevStock = Math.max(0, Number(product?.currentStock) || 0);
+          const delta = nextStock - prevStock;
+          if (delta !== 0) {
+            await api.adjustProductStock(productId, {
+              quantity: Math.abs(delta),
+              direction: delta > 0 ? 'add' : 'reduce',
+              note: 'Stock updated on product edit',
+            });
+          }
+        } else {
+          for (const v of variants) {
+            const data = {
+              size: v.size?.trim() || null,
+              colour: v.colour?.trim() || null,
+              salePrice: v.salePrice != null ? Number(v.salePrice) : null,
+              purchasePrice: v.purchasePrice != null ? Number(v.purchasePrice) : null,
+            };
+            if (v.existingId) {
+              await api.updateProductVariant(productId, v.existingId, data);
+              const nextStock = Math.max(0, Number(v.currentStock) || 0);
+              const prevStock = Math.max(0, Number(v.originalStock) || 0);
+              const delta = nextStock - prevStock;
+              if (delta !== 0) {
+                await api.adjustProductStock(productId, {
+                  variantId: v.existingId,
+                  quantity: Math.abs(delta),
+                  direction: delta > 0 ? 'add' : 'reduce',
+                  note: 'Stock updated on product edit',
+                });
+              }
+            } else if (v.size?.trim() || v.colour?.trim()) {
+              await api.createProductVariant(productId, {
+                ...data,
+                openingStock: Number(v.currentStock) || 0,
+              });
+            }
+          }
+        }
+
+        const refreshed = await api.getProduct(productId);
+        setProduct(refreshed);
+        setOpeningStock(String(refreshed.currentStock));
+        setSalePrice(String(refreshed.salePrice));
+        setPurchasePrice(refreshed.purchasePrice > 0 ? String(refreshed.purchasePrice) : '');
+        setVariants(
+          (refreshed.variants ?? []).map((v) => ({
+            key: String(v.id),
+            existingId: v.id,
+            size: v.size ?? '',
+            colour: v.colour ?? '',
+            productCode: v.productCode,
+            barcode: v.barcode,
+            purchasePrice: v.purchasePrice,
+            salePrice: v.salePrice,
+            currentStock: v.currentStock,
+            originalStock: v.currentStock,
+            sizeCustom: !!(v.size && !(SIZE_PRESETS as readonly string[]).includes(v.size)),
+            colourCustom: !!(v.colour && !(COLOUR_PRESETS as readonly string[]).includes(v.colour)),
+          })),
+        );
+        setHistoryKey((k) => k + 1);
+        setMessage('Product updated. Existing barcodes were kept as the sale identity.');
+        const items = labelItemsFromProduct(refreshed, businessName);
+        if (items.length) setLabelItems(items);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onDeleteProduct() {
+    if (!productId || !product) return;
+    const ok = await confirmAction(`Permanently delete "${product.name}"? This cannot be undone.`, {
+      title: 'Delete product',
+      confirmLabel: 'Delete',
+    });
+    if (!ok) return;
+    setError('');
+    setSaving(true);
+    try {
+      await api.deleteProduct(productId);
+      navigate('/products/list');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function closeLabelModal() {
+    setLabelItems(null);
+  }
+
+  const title = mode === 'add' ? 'Add Product' : product?.name ?? 'Edit Product';
+
+  return (
+    <PageShell
+      title={title}
+      subtitle={
+        mode === 'add'
+          ? 'Save with or without size/colour variants — accessories can use the product barcode'
+          : 'Edit name, prices, stock, and optional variant rows. Existing barcodes stay as sale identity.'
+      }
+      actions={
+        <div className="flex flex-wrap gap-2">
+          <Link to="/products/list">
+            <SecondaryButton type="button">Back to list</SecondaryButton>
+          </Link>
+          {mode === 'edit' && product ? (
+            <>
+              {printableLabels.length > 0 ? (
+                <SecondaryButton type="button" onClick={() => setLabelItems(printableLabels)}>
+                  <Printer className="mr-1.5 inline h-4 w-4" aria-hidden />
+                  Print Labels
+                </SecondaryButton>
+              ) : null}
+              <PrimaryButton type="button" onClick={() => setShowAdjust(true)}>Adjust Stock</PrimaryButton>
+              <DangerButton type="button" onClick={() => void onDeleteProduct()}>Delete Product</DangerButton>
+            </>
+          ) : null}
+        </div>
+      }
+    >
+      {mode === 'edit' && product ? (
+        <Panel className="mb-4">
+          <p className="text-sm font-semibold text-textPrimary">Stock details</p>
+          <div className="mt-2 flex flex-wrap gap-4 text-sm">
+            <span>
+              Sellable: <strong>{product.currentStock}</strong>
+            </span>
+            <span className="text-amber-800 dark:text-amber-200">
+              Damaged: <strong>{product.damagedStock ?? 0}</strong>
+            </span>
+            <span className="text-textMuted">
+              Low limit: {product.effectiveLowStockLimit}
+              {product.isLowStock ? ' · Low stock' : ''}
+              {product.currentStock <= 0 ? ' · Out of stock' : ''}
+            </span>
+          </div>
+        </Panel>
+      ) : null}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Panel>
+          <form className="space-y-4" onSubmit={onSubmit}>
+            <div>
+              <FieldLabel>Product name</FieldLabel>
+              <TextInput value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
+            </div>
+
+            <div>
+              <FieldLabel>Category</FieldLabel>
+              <select
+                className={SELECT_CLASS}
+                value={categoryId}
+                onChange={(event) => setCategoryId(event.target.value)}
+              >
+                <option value="">None</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>{category.name}</option>
+                ))}
+                <option value="__new__">+ Add New Category</option>
+              </select>
+            </div>
+            {categoryId === '__new__' ? (
+              <div>
+                <FieldLabel>New category name</FieldLabel>
+                <TextInput
+                  value={newCategoryName}
+                  onChange={(event) => setNewCategoryName(event.target.value)}
+                  onBlur={() => { void ensureCategoryId().catch((err) => setError(err instanceof Error ? err.message : 'Could not save category')); }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void ensureCategoryId().catch((err) => setError(err instanceof Error ? err.message : 'Could not save category'));
+                    }
+                  }}
+                  required
+                  placeholder="Type name, then Enter or leave field to save"
+                />
+              </div>
+            ) : null}
+
+            <div>
+              <FieldLabel>Total Stock</FieldLabel>
+              <TextInput
+                type="number"
+                min="0"
+                step="1"
+                value={openingStock}
+                onChange={(event) => setOpeningStock(event.target.value)}
+                placeholder="e.g. 5"
+              />
+              <p className="mt-1 text-xs text-textMuted">
+                Optional opening qty. If you add variants, their quantities cannot exceed this total.
+              </p>
+              {stockMisallocated ? (
+                <p className="mt-2 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+                  Variant stock ({allocatedStock}) exceeds total ({totalStock}). Reduce variant quantities or
+                  increase total stock — save is blocked until this matches.
+                </p>
+              ) : null}
+            </div>
+
+            {variants.length === 0 ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <FieldLabel>Sale price</FieldLabel>
+                  <TextInput
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={salePrice}
+                    onChange={(e) => setSalePrice(e.target.value)}
+                    required
+                    placeholder="Required"
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Purchase cost (optional)</FieldLabel>
+                  <TextInput
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={purchasePrice}
+                    onChange={(e) => setPurchasePrice(e.target.value)}
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            {mode === 'edit' && product?.costNotSet ? (
+              <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
+                Cost not set — profit reports may be inaccurate
+              </p>
+            ) : null}
+
+            <div className="rounded-lg border border-border p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div>
+                  <FieldLabel>Variant / colour (optional)</FieldLabel>
+                  <p className="text-xs text-textMuted">
+                    Skip for single-SKU items — a product barcode is generated on save.
+                    With variants, set sale price on each row.
+                  </p>
+                </div>
+                <GhostButton
+                  type="button"
+                  onClick={() => {
+                    if (totalStock > 0 && allocatedStock >= totalStock) {
+                      setError('All stock is already allocated. Increase Total Stock or reduce a variant qty.');
+                      return;
+                    }
+                    setVariants((v) => [...v, emptyVariant()]);
+                  }}
+                >
+                  + Add variant
+                </GhostButton>
+              </div>
+              {variants.length === 0 ? (
+                <p className="text-sm text-textSecondary">
+                  No variants yet. You can save now, or add variant rows if this product needs them.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  <p className={remainingStock < 0 ? 'text-sm text-danger' : 'text-sm text-textSecondary'}>
+                    Allocated: {allocatedStock} of {totalStock || '—'} — {remainingStock} remaining
+                  </p>
+                  {variants.map((v, idx) => (
+                    <div key={v.key} className="rounded-lg border border-border bg-surface1 p-3">
+                      <div className="mb-2 grid gap-2 sm:grid-cols-2">
+                        <div>
+                          <select
+                            className={SELECT_CLASS}
+                            value={sizeSelectValue(v)}
+                            onChange={(event) => {
+                              const next = [...variants];
+                              if (event.target.value === '__custom__') {
+                                next[idx] = { ...v, size: '', sizeCustom: true };
+                              } else {
+                                next[idx] = { ...v, size: event.target.value, sizeCustom: false };
+                              }
+                              setVariants(next);
+                            }}
+                          >
+                            <option value="">Variant</option>
+                            {SIZE_PRESETS.map((s) => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                            <option value="__custom__">Custom…</option>
+                          </select>
+                          {sizeSelectValue(v) === '__custom__' ? (
+                            <TextInput
+                              className="mt-2"
+                              placeholder="Custom variant"
+                              value={v.size ?? ''}
+                              onChange={(event) => {
+                                const next = [...variants];
+                                next[idx] = { ...v, size: event.target.value, sizeCustom: true };
+                                setVariants(next);
+                              }}
+                            />
+                          ) : null}
+                        </div>
+                        <div>
+                          <select
+                            className={SELECT_CLASS}
+                            value={colourSelectValue(v)}
+                            onChange={(event) => {
+                              const next = [...variants];
+                              if (event.target.value === '__custom__') {
+                                next[idx] = { ...v, colour: '', colourCustom: true };
+                              } else {
+                                next[idx] = { ...v, colour: event.target.value, colourCustom: false };
+                              }
+                              setVariants(next);
+                            }}
+                          >
+                            <option value="">Colour / finish</option>
+                            {COLOUR_PRESETS.map((c) => (
+                              <option key={c} value={c}>{c}</option>
+                            ))}
+                            <option value="__custom__">Custom…</option>
+                          </select>
+                          {colourSelectValue(v) === '__custom__' ? (
+                            <TextInput
+                              className="mt-2"
+                              placeholder="Custom colour"
+                              value={v.colour ?? ''}
+                              onChange={(event) => {
+                                const next = [...variants];
+                                next[idx] = { ...v, colour: event.target.value, colourCustom: true };
+                                setVariants(next);
+                              }}
+                            />
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <div>
+                          <FieldLabel>Qty</FieldLabel>
+                          <TextInput
+                            type="number"
+                            min="0"
+                            placeholder="Qty"
+                            value={String(v.currentStock ?? 0)}
+                            onChange={(e) => {
+                              const requested = Math.max(0, Number(e.target.value) || 0);
+                              const others = allocatedStock - (Number(v.currentStock) || 0);
+                              const maxAllowed = totalStock > 0 ? Math.max(0, totalStock - others) : requested;
+                              const next = [...variants];
+                              next[idx] = { ...v, currentStock: Math.min(requested, maxAllowed) };
+                              setVariants(next);
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <FieldLabel>Sale price</FieldLabel>
+                          <TextInput
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="Sale"
+                            value={v.salePrice == null ? '' : String(v.salePrice)}
+                            onChange={(e) => {
+                              const next = [...variants];
+                              const raw = e.target.value;
+                              next[idx] = { ...v, salePrice: raw === '' ? null : Number(raw) };
+                              setVariants(next);
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <FieldLabel>Purchase price</FieldLabel>
+                          <TextInput
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="Cost"
+                            value={v.purchasePrice == null ? '' : String(v.purchasePrice)}
+                            onChange={(e) => {
+                              const next = [...variants];
+                              const raw = e.target.value;
+                              next[idx] = { ...v, purchasePrice: raw === '' ? null : Number(raw) };
+                              setVariants(next);
+                            }}
+                          />
+                        </div>
+                      </div>
+                      {v.barcode ? (
+                        <p className="mt-2 rounded-md border border-border bg-surface2 px-2 py-1.5 font-mono text-xs text-textPrimary">
+                          Barcode (sale identity): <span className="font-semibold">{v.barcode}</span>
+                        </p>
+                      ) : v.existingId && v.productCode ? (
+                        <p className="mt-2 font-mono text-xs text-textMuted">Code: {v.productCode}</p>
+                      ) : (
+                        <p className="mt-2 text-xs text-textMuted">Barcode will be created on save.</p>
+                      )}
+                      <div className="mt-2 text-right">
+                        <IconButton
+                          icon={Trash2}
+                          label="Remove variant row"
+                          variant="danger"
+                          onClick={() => setVariants((rows) => rows.filter((row) => row.key !== v.key))}
+                        >
+                          Remove
+                        </IconButton>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {message ? <Feedback variant="success">{message}</Feedback> : null}
+            {error ? <Feedback variant="error">{error}</Feedback> : null}
+
+            <PrimaryButton type="submit" disabled={saving || stockMisallocated}>
+              {saving ? 'Saving…' : mode === 'add' ? 'Save Product' : 'Save Changes'}
+            </PrimaryButton>
+          </form>
+        </Panel>
+
+        {mode === 'edit' && productId ? (
+          <StockHistoryPanel productId={productId} refreshKey={historyKey} />
+        ) : (
+          <Panel>
+            <h2 className="text-sm font-semibold text-textPrimary">Flow</h2>
+            <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-textSecondary">
+              <li>Enter product name, category, sale price, and optional total stock.</li>
+              <li>Variants are optional — skip for accessories; add size/colour rows when needed.</li>
+              <li>Save — opens the product list with barcode preview (product or each variant).</li>
+              <li>Confirm barcode identity, adjust label size, then print.</li>
+            </ol>
+          </Panel>
+        )}
+      </div>
+
+      {showAdjust && product ? (
+        <StockAdjustModal
+          product={product}
+          onClose={() => setShowAdjust(false)}
+          onDone={async () => {
+            const refreshed = await api.getProduct(product.id);
+            setProduct(refreshed);
+            setHistoryKey((k) => k + 1);
+          }}
+        />
+      ) : null}
+
+      {labelItems && labelItems.length > 0 ? (
+        <BarcodeLabelModal
+          items={labelItems}
+          labelSizeKey={labelSizeKey}
+          labelStyleKey={labelStyleKey}
+          creditLine={creditLine}
+          printerName={printerName}
+          allowQuantityEdit
+          onClose={closeLabelModal}
+        />
+      ) : null}
+    </PageShell>
+  );
+}

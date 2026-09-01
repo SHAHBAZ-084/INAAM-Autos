@@ -1,0 +1,131 @@
+import { FormEvent, useEffect, useState } from 'react';
+import { Navigate } from 'react-router-dom';
+import { APP_DISPLAY_NAME, APP_DEFAULT_LOGO, APP_TAGLINE } from '../config/brand';
+import { BusinessName } from '../components/brand/BusinessName';
+import { useAuth } from '../contexts/AuthContext';
+import { api } from '../lib/api';
+
+const FALLBACK_LOGO = APP_DEFAULT_LOGO;
+
+export function LoginPage() {
+  const { user, login } = useAuth();
+  const [username, setUsername] = useState('admin');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [logoSrc, setLogoSrc] = useState<string | null>(FALLBACK_LOGO);
+  const [logoFailed, setLogoFailed] = useState(false);
+  const [businessName, setBusinessName] = useState(APP_DISPLAY_NAME);
+  const [tagline, setTagline] = useState(APP_TAGLINE);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getPublicBranding()
+      .then((branding) => {
+        if (cancelled) return;
+        if (branding.businessName?.trim()) setBusinessName(branding.businessName.trim());
+        setTagline(branding.tagline?.trim() || APP_TAGLINE);
+        if (branding.logoUrl) {
+          setLogoSrc(branding.logoUrl);
+          setLogoFailed(false);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (user) {
+    return <Navigate to="/" replace />;
+  }
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    setError('');
+    setSubmitting(true);
+
+    try {
+      await login(username, password);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-surface3 px-4">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-surface2 p-8 shadow-xl">
+        <div className="mb-8 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full app-topnav text-xl font-semibold text-white">
+            {logoSrc && !logoFailed ? (
+              <img
+                src={logoSrc}
+                alt={businessName}
+                className="h-full w-full object-cover"
+                onError={() => {
+                  if (logoSrc !== FALLBACK_LOGO) {
+                    setLogoSrc(FALLBACK_LOGO);
+                    setLogoFailed(false);
+                  } else {
+                    setLogoFailed(true);
+                  }
+                }}
+              />
+            ) : (
+              <span aria-hidden>{(businessName.trim().charAt(0) || 'I').toUpperCase()}</span>
+            )}
+          </div>
+          <BusinessName name={businessName} as="h1" className="text-2xl font-semibold text-textPrimary" />
+          {tagline ? <p className="mt-2 text-sm text-textMuted">{tagline}</p> : null}
+        </div>
+
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          <div>
+            <label htmlFor="username" className="mb-1 block text-sm font-medium text-textSecondary">
+              Username
+            </label>
+            <input
+              id="username"
+              type="text"
+              autoComplete="username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              className="w-full rounded-lg border border-border px-3 py-2 outline-none ring-accent focus:ring-2"
+              required
+            />
+          </div>
+
+          <div>
+            <label htmlFor="password" className="mb-1 block text-sm font-medium text-textSecondary">
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="w-full rounded-lg border border-border px-3 py-2 outline-none ring-accent focus:ring-2"
+              required
+            />
+          </div>
+
+          {error ? (
+            <p className="rounded-lg bg-surface1 px-3 py-2 text-sm text-danger">{error}</p>
+          ) : null}
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full btn-primary py-2.5 font-medium disabled:cursor-not-allowed"
+          >
+            {submitting ? 'Signing in...' : 'Sign in'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}

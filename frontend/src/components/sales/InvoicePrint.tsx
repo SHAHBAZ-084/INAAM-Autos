@@ -1,0 +1,626 @@
+import JsBarcode from 'jsbarcode';
+import { formatDateTime, formatMoney } from '../../lib/format';
+import type { BusinessSettings, Invoice } from '../../lib/api';
+import { formatDeveloperCreditForPrint } from '../../config/printCredit';
+import { isPrintFieldEnabled, parseDeveloperConfig } from '../../config/developerPrint';
+import {
+  printHtmlDocument,
+  RECEIPT_78MM_FALLBACK_HEIGHT_MICRONS,
+  RECEIPT_78MM_WIDTH_MICRONS,
+  resolveLogoDataUrl,
+  type ElectronPrintResult,
+} from '../../lib/electronPrint';
+
+/** Physical invoice paper width (mm). Content is slightly narrower and centered. */
+export const RECEIPT_PAGE_WIDTH_MM = 78;
+export const RECEIPT_CONTENT_WIDTH_MM = 62;
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Centered thermal receipt header — original sale-invoice layout (not report grid header). */
+function buildSaleReceiptHeaderHtml(
+  settings: BusinessSettings,
+  logoSrc: string | null | undefined,
+  printConfig: ReturnType<typeof parseDeveloperConfig>,
+): string {
+  const parts: string[] = [];
+
+  if (printConfig.showLogoOnInvoice && logoSrc) {
+    parts.push(`<img class="logo" src="${escapeHtml(logoSrc)}" alt="" />`);
+  }
+  if (isPrintFieldEnabled(printConfig, 'invoice', 'businessName')) {
+    parts.push(`<div class="shop-name">${escapeHtml(settings.businessName)}</div>`);
+  }
+  if (isPrintFieldEnabled(printConfig, 'invoice', 'address') && settings.address?.trim()) {
+    parts.push(`<div class="address">${escapeHtml(settings.address.trim())}</div>`);
+  }
+
+  const contacts: string[] = [];
+  if (isPrintFieldEnabled(printConfig, 'invoice', 'phone') && settings.phone?.trim()) {
+    const label = settings.phoneLabel?.trim();
+    contacts.push(
+      `<div class="contact">${label ? `${escapeHtml(label)}: ` : ''}${escapeHtml(settings.phone.trim())}</div>`,
+    );
+  }
+  if (
+    isPrintFieldEnabled(printConfig, 'invoice', 'whatsapp') &&
+    settings.whatsapp?.trim() &&
+    settings.whatsapp.trim() !== settings.phone?.trim()
+  ) {
+    const label = settings.whatsappLabel?.trim();
+    contacts.push(
+      `<div class="contact">${label ? `${escapeHtml(label)}: ` : ''}${escapeHtml(settings.whatsapp.trim())}</div>`,
+    );
+  }
+  if (contacts.length) {
+    parts.push(`<div class="contacts">${contacts.join('')}</div>`);
+  }
+
+  return parts.length ? `<header class="header">${parts.join('')}</header>` : '';
+}
+
+function paymentLabel(method: string): string {
+  const labels: Record<string, string> = {
+    CASH: 'Cash',
+    CARD: 'Card',
+    EASYPAISA: 'Easypaisa',
+    JAZZCASH: 'JazzCash',
+    BANK_TRANSFER: 'E-payment',
+    UDHAAR: 'Udhaar (credit)',
+  };
+  return labels[method] ?? method;
+}
+
+/** Encode invoice number exactly as stored — used for return scan lookup. */
+function invoiceBarcodeSvg(invoiceNumber: string): string {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  try {
+    JsBarcode(svg, invoiceNumber, {
+      format: 'CODE128',
+      displayValue: false,
+      fontSize: 14,
+      height: 42,
+      margin: 8,
+      width: 1.4,
+      textMargin: 3,
+      textAlign: 'center',
+      textPosition: 'bottom',
+    });
+  } catch {
+    return `<div class="barcode-fallback">${escapeHtml(invoiceNumber)}</div>`;
+  }
+  return svg.outerHTML;
+}
+
+export type BuildInvoiceHtmlOptions = {
+  /** Pre-resolved data URL or absolute logo src */
+  logoSrc?: string | null;
+  /** Force thermal 78mm template even if settings say A4 */
+  forceThermal78?: boolean;
+};
+
+/**
+ * Self-contained receipt HTML (no app screen CSS).
+ * Thermal: 78mm page width, ~73mm content, height grows with cart rows.
+ */
+export function buildInvoicePrintHtml(
+  invoice: Invoice,
+  settings: BusinessSettings,
+  options: BuildInvoiceHtmlOptions = {},
+): string {
+  const isA4 = !options.forceThermal78 && settings.receiptSize === 'A4';
+  const amountReceived = invoice.amountReceived ?? invoice.paidAmount;
+  const changeAmount =
+    invoice.changeAmount ??
+    Math.max(0, amountReceived - invoice.totalAmount - (invoice.udhaarRecoveryApplied ?? 0));
+
+  const customerLine = invoice.customer
+    ? `${escapeHtml(invoice.customer.name)}${
+        invoice.customer.phone ? `<br/><span class="muted">${escapeHtml(invoice.customer.phone)}</span>` : ''
+      }`
+    : null;
+
+  const rows = invoice.items
+    .map((item) => {
+      const variant = [item.variant?.size, item.variant?.colour].filter(Boolean).join('/');
+      const name = escapeHtml(item.product.name);
+      const variantHtml = variant ? `<div class="variant">${escapeHtml(variant)}</div>` : '';
+      const lineDiscount = item.discount > 0 ? `<div class="line-disc">- Rs ${formatMoney(item.discount)}</div>` : '';
+      return `<tr>
+        <td class="col-item"><div class="item-name">${name}</div>${variantHtml}${lineDiscount}</td>
+        <td class="col-qty">${item.quantity}</td>
+        <td class="col-rate">${formatMoney(item.rate)}</td>
+        <td class="col-total">${formatMoney(item.total)}</td>
+      </tr>`;
+    })
+    .join('');
+
+  const logoSrc = options.logoSrc ?? settings.logoUrl;
+  const printConfig = parseDeveloperConfig(settings.developerConfig);
+  const headerHtml = buildSaleReceiptHeaderHtml(settings, logoSrc, printConfig);
+
+  const taxLine =
+    isPrintFieldEnabled(printConfig, 'invoice', 'taxInfo') && printConfig.taxInfo
+      ? `<div class="address">${escapeHtml(printConfig.taxInfo)}</div>`
+      : '';
+  const tagline =
+    isPrintFieldEnabled(printConfig, 'invoice', 'tagline') && settings.tagline
+      ? `<div class="tagline">${escapeHtml(settings.tagline)}</div>`
+      : '';
+
+  const footerNote = isPrintFieldEnabled(printConfig, 'invoice', 'invoiceFooter')
+    ? `<div class="footer-note">${escapeHtml(settings.invoiceFooter)}</div>`
+    : '';
+  const policy = isPrintFieldEnabled(printConfig, 'invoice', 'returnPolicy')
+    ? `<div class="policy-rule"></div><div class="policy">${escapeHtml(settings.returnPolicy)}</div>`
+    : '';
+
+  const summaryParts: string[] = [
+    `<div class="sum-row"><span>Subtotal</span><span>Rs ${formatMoney(invoice.subtotal)}</span></div>`,
+  ];
+  if (invoice.discount > 0) {
+    summaryParts.push(
+      `<div class="sum-row"><span>Discount</span><span>- Rs ${formatMoney(invoice.discount)}</span></div>`,
+    );
+  }
+  summaryParts.push(
+    `<div class="sum-row sum-total"><span>Bill total</span><span>Rs ${formatMoney(invoice.totalAmount)}</span></div>`,
+  );
+  summaryParts.push(
+    `<div class="sum-row"><span>Amount received</span><span>Rs ${formatMoney(amountReceived)}</span></div>`,
+  );
+  if (changeAmount > 0) {
+    summaryParts.push(
+      `<div class="sum-row sum-change"><span>Change due</span><span>Rs ${formatMoney(changeAmount)}</span></div>`,
+    );
+  }
+  if ((invoice.udhaarRecoveryApplied ?? 0) > 0) {
+    summaryParts.push(
+      `<div class="sum-row"><span>Udhaar recovery</span><span>Rs ${formatMoney(invoice.udhaarRecoveryApplied!)}</span></div>`,
+    );
+  }
+  if (invoice.remainingAmount > 0) {
+    summaryParts.push(
+      `<div class="sum-row sum-due"><span>Due (udhaar)</span><span>Rs ${formatMoney(invoice.remainingAmount)}</span></div>`,
+    );
+  }
+  summaryParts.push(
+    `<div class="sum-row"><span>Payment</span><span>${escapeHtml(
+      invoice.paymentMethod === 'CASH' || invoice.paymentMethod === 'UDHAAR'
+        ? paymentLabel(invoice.paymentMethod)
+        : 'E-payment',
+    )}</span></div>`,
+  );
+
+  const barcodeMarkup = invoiceBarcodeSvg(invoice.invoiceNumber);
+
+  const body = `
+    <div class="invoice">
+      ${headerHtml}
+      ${tagline}
+      ${taxLine}
+
+      <div class="rule"></div>
+
+      <section class="meta">
+        <div class="meta-block">
+          <div class="meta-label">Invoice no.</div>
+          <div class="meta-value strong">${escapeHtml(invoice.invoiceNumber)}</div>
+        </div>
+        <div class="meta-block">
+          <div class="meta-label">Date & time</div>
+          <div class="meta-value">${escapeHtml(formatDateTime(invoice.date))}</div>
+        </div>
+        ${
+          customerLine
+            ? `<div class="meta-block">
+          <div class="meta-label">Customer</div>
+          <div class="meta-value">${customerLine}</div>
+        </div>`
+            : ''
+        }
+      </section>
+
+      <div class="rule"></div>
+
+      <table class="items">
+        <colgroup>
+          <col class="c-item" />
+          <col class="c-qty" />
+          <col class="c-rate" />
+          <col class="c-total" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th class="col-item">Item</th>
+            <th class="col-qty">Qty</th>
+            <th class="col-rate">Rate</th>
+            <th class="col-total">Total</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+
+      <div class="rule"></div>
+
+      <section class="summary">
+        ${summaryParts.join('')}
+      </section>
+
+      <div class="rule"></div>
+
+      <footer class="footer">
+        ${footerNote}
+        ${policy}
+      </footer>
+
+      <section class="invoice-barcode">
+        <div class="barcode-caption">Scan for return / exchange</div>
+        <div class="barcode-wrap">${barcodeMarkup}</div>
+        <div class="barcode-code">${escapeHtml(invoice.invoiceNumber)}</div>
+      </section>
+
+      ${(() => {
+        const credit = formatDeveloperCreditForPrint(settings.developerCreditLine);
+        return credit ? `<div class="credit">${escapeHtml(credit)}</div>` : '';
+      })()}
+    </div>`;
+
+  const sharedCss = `
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  img, svg, table, td, th, div, p, span { max-width: 100%; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: #000;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .invoice { width: 100%; margin: 0 auto; }
+  .header { text-align: center; padding: 0 0 2px; }
+  .logo {
+    display: block;
+    max-height: 75px;
+    max-width: 80%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    margin: 0 auto 6px;
+    background: #ffffff;
+  }
+  .shop-name { font-size: 18px; font-weight: 800; letter-spacing: 0.02em; line-height: 1.2; word-wrap: break-word; color: #000; }
+  .tagline { font-size: 11px; color: #000; font-weight: 700; margin: 2px 0 4px; }
+  .address { font-size: 11px; color: #000; font-weight: 700; line-height: 1.35; word-wrap: break-word; }
+  .contacts { margin-top: 3px; }
+  .contact { font-size: 11px; color: #000; margin: 1px 0; font-weight: 700; }
+  .rule { border: none; border-top: 1.5px dashed #000; margin: 6px 0; height: 0; }
+  .meta { display: block; width: 100%; }
+  .meta-block {
+    display: block;
+    width: 100%;
+    padding: 4px 3px;
+    margin: 0 0 4px;
+    border: 1px solid #000;
+    border-radius: 3px;
+    background: #fff;
+  }
+  .meta-label {
+    display: block;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #000;
+    margin: 0 0 2px;
+  }
+  .meta-value {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #000;
+    line-height: 1.3;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  .meta-value.strong { font-size: 15px; font-weight: 800; }
+  .muted { color: #000; font-size: 11px; font-weight: 700; }
+  table.items {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  col.c-item { width: 44%; }
+  col.c-qty { width: 11%; }
+  col.c-rate { width: 22.5%; }
+  col.c-total { width: 22.5%; }
+  table.items th {
+    font-size: 12px;
+    font-weight: 800;
+    border-bottom: 2px solid #000;
+    padding: 4px 1px 5px;
+    vertical-align: bottom;
+    color: #000;
+  }
+  table.items td {
+    padding: 4px 1px;
+    vertical-align: top;
+    border-bottom: 1px dotted #000;
+    font-size: 12px;
+    font-weight: 700;
+    color: #000;
+  }
+  .col-item { text-align: left; word-wrap: break-word; overflow-wrap: anywhere; }
+  .col-qty, .col-rate, .col-total {
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+  }
+  .item-name { font-weight: 700; font-size: 12px; line-height: 1.25; word-break: break-word; overflow-wrap: anywhere; }
+  .variant { color: #000; font-size: 10px; margin-top: 1px; font-weight: 700; }
+  .line-disc { color: #000; font-size: 10px; margin-top: 1px; font-weight: 700; }
+  .summary { padding: 2px 0; width: 100%; font-weight: 700; }
+  .sum-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 4px;
+    margin: 3px 0;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #000;
+    width: 100%;
+  }
+  .sum-row span:first-child { flex: 1 1 auto; min-width: 0; word-break: break-word; font-weight: 700; }
+  .sum-row span:last-child {
+    flex: 0 0 auto;
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+  }
+  .sum-total {
+    font-size: 15px;
+    font-weight: 800;
+    border-top: 2px solid #000;
+    margin-top: 5px;
+    padding-top: 5px;
+  }
+  .sum-total span:last-child { font-weight: 800; font-size: 15px; }
+  .sum-change { font-weight: 800; font-size: 13px; }
+  .sum-due { font-weight: 800; font-size: 13px; color: #000; }
+  .footer { text-align: center; padding: 4px 0; }
+  .footer-note { font-size: 12px; font-weight: 700; margin: 3px 0 0; word-wrap: break-word; color: #000; }
+  .policy-rule { border: none; border-top: 1.5px dashed #000; margin: 8px 0 6px; height: 0; }
+  .policy {
+    font-size: 15px;
+    font-weight: 800;
+    line-height: 1.4;
+    margin: 0;
+    padding: 0;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+    color: #000;
+    text-align: center;
+  }
+  .invoice-barcode {
+    text-align: center;
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1.5px dashed #000;
+  }
+  .barcode-caption {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #000;
+    margin-bottom: 4px;
+  }
+  .barcode-wrap {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    overflow: hidden;
+  }
+  .barcode-wrap svg {
+    display: block;
+    margin: 0 auto;
+    max-width: 100%;
+    height: auto;
+  }
+  .barcode-code {
+    font-family: ui-monospace, Consolas, "Courier New", monospace;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    margin-top: 3px;
+    color: #000;
+    text-align: center;
+  }
+  .barcode-fallback {
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px;
+  }
+  .credit {
+    font-size: 10px;
+    font-weight: 700;
+    color: #000;
+    margin-top: 8px;
+    text-align: center;
+    line-height: 1.3;
+  }
+  `;
+
+  if (isA4) {
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Invoice ${escapeHtml(invoice.invoiceNumber)}</title>
+<style>
+  @page { size: A4; margin: 14mm; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  ${sharedCss}
+  .invoice { max-width: 170mm; margin: 0 auto; }
+  .shop-name { font-size: 22pt; }
+  .tagline, .address, .contact { font-size: 10pt; }
+  table.items { font-size: 10pt; }
+  .policy { font-size: 14pt; font-weight: 800; padding: 0; }
+</style></head><body>${body}</body></html>`;
+  }
+
+  // Dedicated 78mm thermal receipt — height grows with items (no fixed height).
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Invoice ${escapeHtml(invoice.invoiceNumber)}</title>
+<style>
+  @page {
+    size: ${RECEIPT_PAGE_WIDTH_MM}mm auto;
+    margin: 0;
+  }
+  html {
+    width: ${RECEIPT_PAGE_WIDTH_MM}mm;
+    margin: 0;
+    padding: 0;
+    background: #fff;
+  }
+  body {
+    width: ${RECEIPT_PAGE_WIDTH_MM}mm;
+    max-width: ${RECEIPT_PAGE_WIDTH_MM}mm;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+    background: #fff;
+  }
+  ${sharedCss}
+  .invoice {
+    width: ${RECEIPT_CONTENT_WIDTH_MM}mm;
+    max-width: ${RECEIPT_CONTENT_WIDTH_MM}mm;
+    height: auto;
+    margin: 0 auto;
+    padding: 1.5mm 0 2mm;
+  }
+  @media print {
+    html, body {
+      width: ${RECEIPT_PAGE_WIDTH_MM}mm;
+      margin: 0;
+      padding: 0;
+      background: #fff;
+    }
+    .invoice {
+      width: ${RECEIPT_CONTENT_WIDTH_MM}mm;
+      max-width: ${RECEIPT_CONTENT_WIDTH_MM}mm;
+      margin: 0 auto;
+    }
+  }
+</style></head><body>${body}</body></html>`;
+}
+
+export type PrintInvoiceOptions = {
+  preview?: boolean;
+  forceThermal78?: boolean;
+};
+
+let invoicePrintLock = false;
+
+/**
+ * Print invoice after logo/fonts are ready. Uses Electron deviceName when set.
+ * Never prints before the sale document is available (caller must pass saved invoice).
+ */
+export async function printInvoice(
+  invoice: Invoice,
+  settings: BusinessSettings,
+  options: PrintInvoiceOptions = {},
+): Promise<ElectronPrintResult> {
+  if (invoicePrintLock && !options.preview) {
+    return { ok: false, failureReason: 'Print already in progress', jobType: 'invoice' };
+  }
+  if (!options.preview) invoicePrintLock = true;
+
+  try {
+    const logoSrc = await resolveLogoDataUrl(settings.logoUrl);
+    const forceThermal78 = options.forceThermal78 ?? settings.receiptSize !== 'A4';
+    const html = buildInvoicePrintHtml(invoice, settings, {
+      logoSrc,
+      forceThermal78,
+    });
+    const isThermal = forceThermal78 || settings.receiptSize !== 'A4';
+
+    const result = await printHtmlDocument(html, {
+      deviceName: settings.printerName,
+      pageSize: isThermal
+        ? { width: RECEIPT_78MM_WIDTH_MICRONS, height: RECEIPT_78MM_FALLBACK_HEIGHT_MICRONS }
+        : 'A4',
+      jobType: options.preview ? 'invoice-preview' : 'invoice',
+      copies: 1,
+      preview: options.preview,
+      contentWidthMm: isThermal ? RECEIPT_CONTENT_WIDTH_MM : 170,
+    });
+    return result;
+  } finally {
+    if (!options.preview) invoicePrintLock = false;
+  }
+}
+
+/** Build a short sample invoice for Test Receipt (does not save or change stock). */
+export function buildTestInvoice(_settings: BusinessSettings, itemCount: number): Invoice {
+  const count = Math.max(1, Math.min(40, itemCount));
+  const items = Array.from({ length: count }, (_, i) => {
+    const rate = 500 + i * 25;
+    const quantity = 1 + (i % 3);
+    const discount = i % 5 === 0 ? 50 : 0;
+    const total = Math.max(0, quantity * rate - discount);
+    return {
+      id: i + 1,
+      productId: i + 1,
+      variantId: i % 2 === 0 ? i + 1 : null,
+      quantity,
+      rate,
+      discount,
+      total,
+      costAtSale: rate * 0.6,
+      product: {
+        id: i + 1,
+        name:
+          i % 4 === 0
+            ? `Very long product name example ${i + 1} with extra words that must wrap on the receipt`
+            : `Sample item ${i + 1}`,
+        productCode: `T${i + 1}`,
+      },
+      variant:
+        i % 2 === 0
+          ? { id: i + 1, size: 'L', colour: 'Black', productCode: `T${i + 1}-L` }
+          : null,
+    };
+  });
+  const subtotal = items.reduce((s, it) => s + it.quantity * it.rate, 0);
+  const discount = items.reduce((s, it) => s + it.discount, 0) + 100;
+  const totalAmount = Math.max(0, subtotal - discount);
+  const now = new Date().toISOString();
+  return {
+    id: 0,
+    invoiceNumber: 'TEST-RECEIPT',
+    customerId: 1,
+    date: now,
+    status: 'ACTIVE',
+    subtotal,
+    discount,
+    totalAmount,
+    amountReceived: totalAmount,
+    paidAmount: totalAmount,
+    remainingAmount: 0,
+    changeAmount: 0,
+    paymentMethod: 'CASH',
+    notes: null,
+    customer: { id: 1, name: 'Test Customer', phone: '0300-0000000' },
+    items,
+    createdAt: now,
+  };
+}

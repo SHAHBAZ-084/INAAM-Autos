@@ -1,0 +1,121 @@
+import { describe, expect, it, beforeEach } from 'vitest';
+import { ThemeMode } from '@prisma/client';
+import { prisma } from '../../lib/prisma';
+import {
+  BUSINESS_SETTINGS_ID,
+  DEFAULT_BUSINESS_SETTINGS,
+  ensureBusinessSettings,
+  getBusinessSettings,
+  updateBusinessSettings,
+} from './settings.service';
+
+describe('business settings', () => {
+  beforeEach(async () => {
+    await ensureBusinessSettings();
+    await updateBusinessSettings(
+      {
+        businessName: DEFAULT_BUSINESS_SETTINGS.businessName,
+        tagline: DEFAULT_BUSINESS_SETTINGS.tagline,
+        ownerName: DEFAULT_BUSINESS_SETTINGS.ownerName,
+        phone: DEFAULT_BUSINESS_SETTINGS.phone,
+        whatsapp: DEFAULT_BUSINESS_SETTINGS.whatsapp,
+        address: DEFAULT_BUSINESS_SETTINGS.address,
+        invoiceFooter: DEFAULT_BUSINESS_SETTINGS.invoiceFooter,
+        returnPolicy: DEFAULT_BUSINESS_SETTINGS.returnPolicy,
+        invoicePrefix: DEFAULT_BUSINESS_SETTINGS.invoicePrefix,
+        currency: DEFAULT_BUSINESS_SETTINGS.currency,
+        receiptSize: DEFAULT_BUSINESS_SETTINGS.receiptSize,
+        a4InvoiceEnabled: DEFAULT_BUSINESS_SETTINGS.a4InvoiceEnabled,
+        printerName: DEFAULT_BUSINESS_SETTINGS.printerName,
+        barcodeLabelSize: DEFAULT_BUSINESS_SETTINGS.barcodeLabelSize,
+        barcodeLabelStyle: DEFAULT_BUSINESS_SETTINGS.barcodeLabelStyle,
+        lowStockLimit: DEFAULT_BUSINESS_SETTINGS.lowStockLimit,
+        backupFolderPath: DEFAULT_BUSINESS_SETTINGS.backupFolderPath,
+        themeMode: DEFAULT_BUSINESS_SETTINGS.themeMode,
+      },
+      { identityEditActive: true },
+    );
+  });
+
+  it('returns singleton defaults and never creates a second row', async () => {
+    const first = await getBusinessSettings();
+    expect(first.id).toBe(BUSINESS_SETTINGS_ID);
+    expect(first.businessName).toBe('INAAM AUTOS & SPARE PARTS');
+    expect(first.phone).toBe(DEFAULT_BUSINESS_SETTINGS.phone);
+    expect(first.whatsapp).toBe(DEFAULT_BUSINESS_SETTINGS.whatsapp);
+    expect(first.address).toBe(DEFAULT_BUSINESS_SETTINGS.address);
+    expect(first.invoicePrefix).toBe('IA-');
+    expect(first.currency).toBe('PKR');
+    expect(first.lowStockLimit).toBe(5);
+    expect(first.tagline).toBe('Quality Auto Parts, Trusted Service');
+
+    await ensureBusinessSettings();
+    await ensureBusinessSettings();
+
+    const count = await prisma.businessSettings.count();
+    expect(count).toBe(1);
+  });
+
+  it('updates settings and persists values', async () => {
+    const updated = await updateBusinessSettings({
+      lowStockLimit: 8,
+      themeMode: ThemeMode.DARK,
+      invoiceFooter: 'Thanks for shopping',
+    });
+
+    expect(updated.invoiceFooter).toBe('Thanks for shopping');
+    expect(updated.lowStockLimit).toBe(8);
+    expect(updated.themeMode).toBe('dark');
+
+    const again = await getBusinessSettings();
+    expect(again.invoiceFooter).toBe('Thanks for shopping');
+    expect(again.lowStockLimit).toBe(8);
+    expect(again.themeMode).toBe('dark');
+  });
+
+  it('persists barcode label size presets and custom WxH', async () => {
+    const a4 = await updateBusinessSettings({ barcodeLabelSize: 'a4' });
+    expect(a4.barcodeLabelSize).toBe('a4');
+    expect((await getBusinessSettings()).barcodeLabelSize).toBe('a4');
+
+    const thermal = await updateBusinessSettings({ barcodeLabelSize: '40x30' });
+    expect(thermal.barcodeLabelSize).toBe('40x30');
+
+    const shortRoll = await updateBusinessSettings({ barcodeLabelSize: '33x23' });
+    expect(shortRoll.barcodeLabelSize).toBe('33x23');
+
+    const custom = await updateBusinessSettings({ barcodeLabelSize: '60x40' });
+    expect(custom.barcodeLabelSize).toBe('60x40');
+
+    await expect(updateBusinessSettings({ barcodeLabelSize: 'huge' })).rejects.toThrow(/label size/i);
+  });
+
+  it('persists barcode label style builtins and custom keys', async () => {
+    const focus = await updateBusinessSettings({ barcodeLabelStyle: 'builtin:priceFocus' });
+    expect(focus.barcodeLabelStyle).toBe('builtin:priceFocus');
+    expect((await getBusinessSettings()).barcodeLabelStyle).toBe('builtin:priceFocus');
+
+    const custom = await updateBusinessSettings({ barcodeLabelStyle: 'custom:style-abc' });
+    expect(custom.barcodeLabelStyle).toBe('custom:style-abc');
+
+    await expect(updateBusinessSettings({ barcodeLabelStyle: 'nope' })).rejects.toThrow(/label style/i);
+    await expect(updateBusinessSettings({ barcodeLabelStyle: 'builtin:fancy' })).rejects.toThrow(
+      /label style/i,
+    );
+  });
+
+  it('rejects invalid lowStockLimit', async () => {
+    await expect(updateBusinessSettings({ lowStockLimit: 0 })).rejects.toThrow(
+      /positive integer/i,
+    );
+    await expect(updateBusinessSettings({ lowStockLimit: -3 })).rejects.toThrow(
+      /positive integer/i,
+    );
+  });
+
+  it('rejects empty business name', async () => {
+    await expect(updateBusinessSettings({ businessName: '   ' }, { identityEditActive: true })).rejects.toThrow(
+      /Business name is required/i,
+    );
+  });
+});

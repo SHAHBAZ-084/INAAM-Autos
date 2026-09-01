@@ -1,0 +1,42 @@
+/// <reference types="vite/client" />
+
+export {};
+
+declare global {
+  interface Window {
+    inaamAutos?: {
+      platform: NodeJS.Platform;
+      restartApp?: () => Promise<void>;
+      getUserDataPath?: () => Promise<string>;
+      restoreWindowInput?: () => Promise<void>;
+      printHtml?: (request: {
+        html: string;
+        deviceName?: string | null;
+        silent?: boolean;
+        printBackground?: boolean;
+        scaleFactor?: number;
+        preferCSSPageSize?: boolean;
+        pageSize?: string | { width: number; height: number };
+        jobType?: string;
+        copies?: number;
+      }) => Promise<{
+        ok: boolean;
+        failureReason?: string;
+        printer?: string | null;
+        copies?: number;
+        pageSize?: string | { width: number; height: number };
+        jobType?: string;
+      }>;
+      listPrinters?: () => Promise<
+        Array<{
+          name: string;
+          displayName: string;
+          description: string;
+          isDefault: boolean;
+          status: number;
+        }>
+      >;
+    };
+    usmanGarments?: Window['inaamAutos'];
+  }
+}
