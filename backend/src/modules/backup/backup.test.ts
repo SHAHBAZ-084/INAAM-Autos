@@ -15,6 +15,7 @@ import { createSale } from '../sales/sales.service';
 import {
   assertDiskSpaceForBackup,
   createBackup,
+  deleteBackup,
   estimateBackupBytes,
   validateBackupFolder,
 } from './backup.service';
@@ -62,6 +63,18 @@ describe('Backup & restore (Phase 12)', () => {
     const dbPath = path.join(entry.folderPath, 'inaam-autos.db');
     fs.appendFileSync(dbPath, 'corrupt');
     expect(() => validateBackupFolder(entry.folderPath)).toThrow(/integrity|corrupt/i);
+  });
+
+  it('hard-deletes a backup folder from disk', async () => {
+    const entry = await createBackup({ destinationFolder: tempBackupRoot, label: 'Delete me' });
+    expect(fs.existsSync(entry.folderPath)).toBe(true);
+    await deleteBackup(entry.folderPath);
+    expect(fs.existsSync(entry.folderPath)).toBe(false);
+  });
+
+  it('rejects deleting paths outside allowed backup roots', async () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'usman-backup-outside-'));
+    await expect(deleteBackup(outside)).rejects.toMatchObject({ code: 'BACKUP_INVALID' });
   });
 });
 

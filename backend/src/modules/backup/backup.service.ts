@@ -245,6 +245,88 @@ export async function listBackups(customFolder?: string | null): Promise<BackupE
   return entries.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+async function allowedBackupRoots(): Promise<string[]> {
+  const roots = [path.resolve(getDefaultBackupsDir())];
+  try {
+    const settings = await getBusinessSettings();
+    const custom = settings.backupFolderPath?.trim();
+    if (custom) roots.push(path.resolve(custom));
+  } catch {
+    /* settings may be unavailable during upgrades */
+  }
+  return [...new Set(roots)];
+}
+
+function isUnderBackupRoot(folderPath: string, roots: string[]): boolean {
+  const resolved = path.resolve(folderPath);
+  return roots.some((root) => {
+    const rel = path.relative(root, resolved);
+    return rel.length > 0 && !rel.startsWith('..') && !path.isAbsolute(rel);
+  });
+}
+
+function isRecognizedBackupFolderName(folderPath: string): boolean {
+  const name = path.basename(folderPath);
+  return name.startsWith(APP_BACKUP_PREFIX) || name.startsWith(LEGACY_BACKUP_PREFIX);
+}
+
+function readBackupManifestApp(folderPath: string): string | null {
+  const manifestPath = path.join(folderPath, 'manifest.json');
+  if (!fs.existsSync(manifestPath)) return null;
+  try {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as BackupManifest;
+    return manifest.app ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function assertBackupFolderDeletable(folderPath: string, roots: string[]): string {
+  const resolved = path.resolve(folderPath.trim());
+  if (!fs.existsSync(resolved)) {
+    throw new AppError(404, 'Backup folder not found', 'BACKUP_NOT_FOUND');
+  }
+  if (!fs.statSync(resolved).isDirectory()) {
+    throw new AppError(400, 'Path is not a backup folder', 'BACKUP_INVALID');
+  }
+
+  const dataRoot = path.resolve(getDataRoot());
+  const dbPath = path.resolve(getDatabasePath());
+  const uploads = path.resolve(getUploadsDir());
+  if (resolved === dataRoot || resolved === dbPath || resolved === uploads) {
+    throw new AppError(400, 'Cannot delete protected application data', 'BACKUP_FORBIDDEN');
+  }
+
+  for (const root of roots) {
+    if (resolved === path.resolve(root)) {
+      throw new AppError(400, 'Cannot delete the backups root folder', 'BACKUP_INVALID');
+    }
+  }
+
+  const app = readBackupManifestApp(resolved);
+  if (!app || !(BACKUP_APP_IDS as readonly string[]).includes(app)) {
+    throw new AppError(400, `Not a valid ${APP_DISPLAY_NAME} backup folder`, 'BACKUP_INVALID');
+  }
+
+  const permitted =
+    isUnderBackupRoot(resolved, roots) ||
+    (isRecognizedBackupFolderName(resolved) && app != null);
+
+  if (!permitted) {
+    throw new AppError(403, 'Backup folder is not in an allowed backup location', 'BACKUP_FORBIDDEN');
+  }
+
+  return resolved;
+}
+
+/** Permanently remove a backup folder and all of its contents. */
+export async function deleteBackup(folderPath: string): Promise<void> {
+  const roots = await allowedBackupRoots();
+  const resolved = assertBackupFolderDeletable(folderPath, roots);
+  fs.rmSync(resolved, { recursive: true, force: true });
+  logger.info('Backup deleted', { folderPath: resolved });
+}
+
 export async function getLastBackupInfo(): Promise<{ lastBackupAt: string | null; lastAutomaticAt: string | null }> {
   const backups = await listBackups();
   const lastBackupAt = backups[0]?.createdAt ?? null;

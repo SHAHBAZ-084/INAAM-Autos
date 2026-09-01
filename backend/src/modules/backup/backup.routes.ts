@@ -3,6 +3,7 @@ import { requireAuth } from '../../middleware/auth';
 import { asyncHandler } from '../../utils/helpers';
 import {
   createBackup,
+  deleteBackup,
   listBackups,
   restoreBackup,
   validateBackupFolder,
@@ -45,5 +46,14 @@ backupRouter.post(
     const folderPath = String(req.body?.folderPath ?? '');
     const result = await restoreBackup(folderPath);
     res.json({ ok: true, requiresRestart: true, ...result });
+  }),
+);
+
+backupRouter.post(
+  '/delete',
+  asyncHandler(async (req, res) => {
+    const folderPath = String(req.body?.folderPath ?? '');
+    await deleteBackup(folderPath);
+    res.json({ ok: true });
   }),
 );

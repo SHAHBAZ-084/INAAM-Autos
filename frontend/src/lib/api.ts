@@ -931,6 +931,13 @@ export const api = {
       body: JSON.stringify({ folderPath }),
     });
   },
+
+  deleteBackup(folderPath: string) {
+    return request<{ ok: boolean }>('/api/backup/delete', {
+      method: 'POST',
+      body: JSON.stringify({ folderPath }),
+    });
+  },
 };
 
 export type ProductCategory = {

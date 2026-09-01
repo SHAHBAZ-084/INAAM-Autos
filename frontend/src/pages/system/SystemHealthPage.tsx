@@ -62,6 +62,7 @@ export function SystemHealthPage() {
   const [loading, setLoading] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
   const [restoreBusy, setRestoreBusy] = useState(false);
+  const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
   const [restorePath, setRestorePath] = useState('');
   const [message, setMessage] = useState('');
   const [dismissed, setDismissed] = useState<DismissedState>(() => readDismissed());
@@ -184,6 +185,27 @@ export function SystemHealthPage() {
 
   function pickRecentBackup(folderPath: string) {
     setRestorePath(folderPath);
+  }
+
+  async function deleteBackupFolder(folderPath: string, createdAt: string) {
+    const confirmed = await confirmAction(
+      `Permanently delete this backup from disk?\n\n${folderPath}\n\nCreated: ${formatDate(createdAt)}\n\nThis cannot be undone.`,
+      { title: 'Delete backup', confirmLabel: 'Delete permanently', danger: true },
+    );
+    if (!confirmed) return;
+
+    setDeleteBusyId(folderPath);
+    setMessage('');
+    try {
+      await api.deleteBackup(folderPath);
+      if (restorePath.trim() === folderPath) setRestorePath('');
+      setMessage('Backup deleted permanently.');
+      await load();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Could not delete backup');
+    } finally {
+      setDeleteBusyId(null);
+    }
   }
 
   function restartApp() {
@@ -359,7 +381,7 @@ export function SystemHealthPage() {
                     <th className="py-1 pr-2">Date</th>
                     <th className="py-1 pr-2">Size</th>
                     <th className="py-1 pr-2">Path</th>
-                    <th className="py-1" />
+                    <th className="py-1 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -369,13 +391,23 @@ export function SystemHealthPage() {
                       <td className="py-1.5 pr-2">{formatBytes(b.totalSize)}</td>
                       <td className="py-1.5 break-all text-xs text-textMuted">{b.folderPath}</td>
                       <td className="py-1.5">
-                        <button
-                          type="button"
-                          className="text-xs text-brand underline"
-                          onClick={() => pickRecentBackup(b.folderPath)}
-                        >
-                          Use for restore
-                        </button>
+                        <div className="flex flex-wrap items-center justify-end gap-3">
+                          <button
+                            type="button"
+                            className="text-xs text-brand underline"
+                            onClick={() => pickRecentBackup(b.folderPath)}
+                          >
+                            Use for restore
+                          </button>
+                          <button
+                            type="button"
+                            className="text-xs text-danger underline disabled:opacity-50"
+                            disabled={deleteBusyId === b.folderPath}
+                            onClick={() => void deleteBackupFolder(b.folderPath, b.createdAt)}
+                          >
+                            {deleteBusyId === b.folderPath ? 'Deleting…' : 'Delete'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
