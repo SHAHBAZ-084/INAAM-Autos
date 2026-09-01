@@ -51,19 +51,44 @@ function serializeCustomer(
   };
 }
 
-export async function listCustomers(params: { activeOnly?: boolean; search?: string } = {}) {
+export async function listCustomers(params: {
+  activeOnly?: boolean;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+} = {}) {
+  const page = Math.max(1, params.page ?? 1);
+  const pageSize = Math.min(100, Math.max(1, params.pageSize ?? 20));
+  const skip = (page - 1) * pageSize;
+
   const where: Prisma.CustomerWhereInput = {};
   if (params.activeOnly !== false) where.isActive = true;
   if (params.search?.trim()) {
     const q = params.search.trim();
     where.OR = [{ name: { contains: q } }, { phone: { contains: q } }];
   }
-  const rows = await prisma.customer.findMany({
-    where,
-    include: { account: { include: { ledger: true } } },
-    orderBy: { name: 'asc' },
-  });
-  return rows.map(serializeCustomer);
+
+  const include = { account: { include: { ledger: true } } } as const;
+  const orderBy = { name: 'asc' } as const;
+
+  const [total, rows] = await Promise.all([
+    prisma.customer.count({ where }),
+    prisma.customer.findMany({
+      where,
+      include,
+      orderBy,
+      skip,
+      take: pageSize,
+    }),
+  ]);
+
+  return {
+    items: rows.map(serializeCustomer),
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
 }
 
 export async function getCustomer(id: number) {

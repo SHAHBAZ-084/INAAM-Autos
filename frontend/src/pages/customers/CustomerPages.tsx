@@ -28,9 +28,10 @@ function todayInput() {
 }
 
 export function CustomersListPage() {
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [result, setResult] = useState<Awaited<ReturnType<typeof api.listCustomers>> | null>(null);
   const [search, setSearch] = useState('');
   const [activeOnly, setActiveOnly] = useState(true);
+  const [page, setPage] = useState(1);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -38,7 +39,13 @@ export function CustomersListPage() {
     setLoading(true);
     setError('');
     try {
-      setCustomers(await api.listCustomers({ search: search.trim() || undefined, activeOnly }));
+      const next = await api.listCustomers({
+        search: search.trim() || undefined,
+        activeOnly,
+        page,
+        pageSize: 20,
+      });
+      setResult(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load customers');
     } finally {
@@ -48,7 +55,7 @@ export function CustomersListPage() {
 
   useEffect(() => {
     void load();
-  }, [activeOnly]);
+  }, [activeOnly, page]);
 
   return (
     <PageShell
@@ -83,7 +90,7 @@ export function CustomersListPage() {
           </div>
         </div>
         <div className="mt-4">
-          <SecondaryButton type="button" onClick={() => void load()} disabled={loading}>
+          <SecondaryButton type="button" onClick={() => { setPage(1); void load(); }} disabled={loading}>
             {loading ? 'Loading…' : 'Refresh'}
           </SecondaryButton>
         </div>
@@ -102,7 +109,7 @@ export function CustomersListPage() {
             </tr>
           </thead>
           <tbody>
-            {customers.map((c) => (
+            {result?.items.map((c) => (
               <tr key={c.id} className="border-b border-border/60 hover:bg-surface1">
                 <td className="px-2 py-2">
                   <Link className="font-medium text-accent hover:underline" to={`/customers/${c.id}`}>
@@ -114,7 +121,7 @@ export function CustomersListPage() {
                 <td className="px-2 py-2">{c.isActive ? 'Active' : 'Inactive'}</td>
               </tr>
             ))}
-            {!loading && customers.length === 0 ? (
+            {!loading && (result?.items.length ?? 0) === 0 ? (
               <tr>
                 <td colSpan={4} className="px-2 py-8 text-center text-textSecondary">
                   No customers yet.
@@ -124,6 +131,21 @@ export function CustomersListPage() {
           </tbody>
         </table>
       </Panel>
+      {result ? (
+        <div className="mt-4 flex items-center justify-between">
+          <p className="text-sm text-textSecondary">
+            Page {result.page} of {result.totalPages} ({result.total} customers)
+          </p>
+          <div className="flex gap-2">
+            <SecondaryButton disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>
+              Previous
+            </SecondaryButton>
+            <SecondaryButton disabled={page >= result.totalPages} onClick={() => setPage((value) => value + 1)}>
+              Next
+            </SecondaryButton>
+          </div>
+        </div>
+      ) : null}
     </PageShell>
   );
 }
@@ -475,7 +497,7 @@ export function CustomerPaymentPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    api.listCustomers().then(setCustomers).catch(() => setCustomers([]));
+    api.listCustomers({ pageSize: 100 }).then((r) => setCustomers(r.items)).catch(() => setCustomers([]));
   }, []);
 
   const selected = customers.find((c) => c.id === customerId);
@@ -500,7 +522,7 @@ export function CustomerPaymentPage() {
       });
       setMessage(result.confirmation.message);
       setAmount('');
-      setCustomers(await api.listCustomers());
+      setCustomers((await api.listCustomers({ pageSize: 100 })).items);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Payment failed');
     } finally {

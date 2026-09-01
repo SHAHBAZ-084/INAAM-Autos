@@ -691,12 +691,14 @@ export const api = {
     }>('/api/purchases/returns', { method: 'POST', body: JSON.stringify(data) });
   },
 
-  listCustomers(params?: { search?: string; activeOnly?: boolean }) {
+  listCustomers(params?: { search?: string; activeOnly?: boolean; page?: number; pageSize?: number }) {
     const query = new URLSearchParams();
     if (params?.search) query.set('search', params.search);
     if (params?.activeOnly === false) query.set('activeOnly', 'false');
+    if (params?.page != null) query.set('page', String(params.page));
+    if (params?.pageSize != null) query.set('pageSize', String(params.pageSize));
     const suffix = query.toString() ? `?${query}` : '';
-    return request<Customer[]>(`/api/customers${suffix}`);
+    return request<PaginatedResult<Customer>>(`/api/customers${suffix}`);
   },
   getCustomer(id: number) {
     return request<CustomerDetail>(`/api/customers/${id}`);

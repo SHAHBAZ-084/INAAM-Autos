@@ -37,10 +37,12 @@ const paymentSchema = z.object({
 customersRouter.get(
   '/',
   asyncHandler(async (req, res) => {
+    const page = req.query.page ? parseInt(String(req.query.page), 10) : undefined;
+    const pageSize = req.query.pageSize ? parseInt(String(req.query.pageSize), 10) : undefined;
     const search = req.query.search ? String(req.query.search) : undefined;
     const activeOnly = req.query.activeOnly !== 'false';
-    const items = await customersService.listCustomers({ search, activeOnly });
-    res.json(items);
+    const result = await customersService.listCustomers({ search, activeOnly, page, pageSize });
+    res.json(result);
   }),
 );
 

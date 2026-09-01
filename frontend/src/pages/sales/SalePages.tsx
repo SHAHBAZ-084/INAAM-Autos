@@ -150,10 +150,10 @@ export function NewSalePage() {
   const initialScanHandledRef = useRef<string | null>(null);
 
   useEffect(() => {
-    Promise.all([api.getSettings(), api.listCustomers()])
+    Promise.all([api.getSettings(), api.listCustomers({ pageSize: 100 })])
       .then(([s, c]) => {
         setSettings(s);
-        setCustomers(c);
+        setCustomers(c.items);
       })
       .catch(() => undefined);
   }, []);
@@ -356,7 +356,7 @@ export function NewSalePage() {
       setNewCustomerName('');
       setNewCustomerPhone('');
       // refresh customers for updated balances
-      api.listCustomers().then(setCustomers).catch(() => undefined);
+      api.listCustomers({ pageSize: 100 }).then((r) => setCustomers(r.items)).catch(() => undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sale failed');
     } finally {
