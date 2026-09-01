@@ -683,8 +683,8 @@ export function VoucherListPage() {
     setLoading(true);
     setLoadError('');
     api
-      .listVouchers()
-      .then(setVouchers)
+      .listVouchers({ pageSize: 100 })
+      .then((r) => setVouchers(r.items))
       .catch((err) => setLoadError(err instanceof Error ? err.message : 'Failed to load vouchers'))
       .finally(() => setLoading(false));
   }, []);

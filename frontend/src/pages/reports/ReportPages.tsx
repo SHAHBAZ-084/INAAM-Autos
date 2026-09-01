@@ -585,6 +585,9 @@ export function VouchersReportPage() {
   const [toDate, setToDate] = useState(monthEndInputValue);
   const [voucherType, setVoucherType] = useState<VoucherTypeFilter>('all');
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -609,7 +612,7 @@ export function VouchersReportPage() {
     return { totalAmount, byType };
   }, [vouchers]);
 
-  async function loadReport() {
+  async function loadReport(nextPage = page) {
     if (!fromDate || !toDate) {
       setError('Select from and to dates');
       return;
@@ -618,12 +621,17 @@ export function VouchersReportPage() {
     setLoading(true);
     setSelected(null);
     try {
-      const rows = await api.listVouchers({
+      const result = await api.listVouchers({
         fromDate,
         toDate,
         type: voucherType === 'all' ? undefined : voucherType,
+        page: nextPage,
+        pageSize: 20,
       });
-      setVouchers(rows);
+      setVouchers(result.items);
+      setTotalPages(result.totalPages);
+      setTotal(result.total);
+      setPage(result.page);
       setLoaded(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load vouchers');
@@ -717,7 +725,7 @@ export function VouchersReportPage() {
               ]}
             />
           </div>
-          <FinancialButton type="button" onClick={loadReport} disabled={loading}>
+          <FinancialButton type="button" onClick={() => { setPage(1); void loadReport(1); }} disabled={loading}>
             {loading ? 'Loading…' : 'View'}
           </FinancialButton>
         </div>
@@ -801,6 +809,21 @@ export function VouchersReportPage() {
                 </tfoot>
               </table>
             </div>
+            {totalPages > 1 ? (
+              <div className="mt-4 flex items-center justify-between">
+                <p className="text-sm text-textSecondary">
+                  Page {page} of {totalPages} ({total} vouchers)
+                </p>
+                <div className="flex gap-2">
+                  <SecondaryButton type="button" disabled={page <= 1 || loading} onClick={() => void loadReport(page - 1)}>
+                    Previous
+                  </SecondaryButton>
+                  <SecondaryButton type="button" disabled={page >= totalPages || loading} onClick={() => void loadReport(page + 1)}>
+                    Next
+                  </SecondaryButton>
+                </div>
+              </div>
+            ) : null}
           </>
         )}
       </Panel>

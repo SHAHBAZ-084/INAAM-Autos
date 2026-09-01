@@ -1918,7 +1918,13 @@ export async function listVouchers(filters?: {
   fromDate?: string;
   toDate?: string;
   type?: VoucherType;
+  page?: number;
+  pageSize?: number;
 }) {
+  const page = Math.max(1, filters?.page ?? 1);
+  const pageSize = Math.min(100, Math.max(1, filters?.pageSize ?? 20));
+  const skip = (page - 1) * pageSize;
+
   let financialYearId: number | undefined;
   try {
     financialYearId = await getActiveFinancialYearId(prisma);
@@ -1944,11 +1950,26 @@ export async function listVouchers(filters?: {
     where.type = filters.type;
   }
 
-  return prisma.voucher.findMany({
-    where,
-    include: voucherInclude,
-    orderBy: [{ date: 'desc' }, { number: 'desc' }],
-  });
+  const orderBy = [{ date: 'desc' as const }, { number: 'desc' as const }];
+
+  const [total, items] = await Promise.all([
+    prisma.voucher.count({ where }),
+    prisma.voucher.findMany({
+      where,
+      include: voucherInclude,
+      orderBy,
+      skip,
+      take: pageSize,
+    }),
+  ]);
+
+  return {
+    items,
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
 }
 
 export async function updateVoucherAmount(

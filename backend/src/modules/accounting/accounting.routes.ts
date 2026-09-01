@@ -116,6 +116,8 @@ accountingRouter.get(
 accountingRouter.get(
   '/vouchers',
   asyncHandler(async (req, res) => {
+    const page = req.query.page ? parseInt(String(req.query.page), 10) : undefined;
+    const pageSize = req.query.pageSize ? parseInt(String(req.query.pageSize), 10) : undefined;
     const fromDate = req.query.fromDate as string | undefined;
     const toDate = req.query.toDate as string | undefined;
     const typeParam = req.query.type as string | undefined;
@@ -124,8 +126,8 @@ accountingRouter.get(
         ? (typeParam as VoucherType)
         : undefined;
 
-    const vouchers = await accountingService.listVouchers({ fromDate, toDate, type });
-    res.json(vouchers);
+    const result = await accountingService.listVouchers({ fromDate, toDate, type, page, pageSize });
+    res.json(result);
   }),
 );
 

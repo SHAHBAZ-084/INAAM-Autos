@@ -352,13 +352,15 @@ export const api = {
     return request<AccountCategory>(`/api/accounting/categories/${id}`, { method: 'DELETE' });
   },
 
-  listVouchers(params?: { fromDate?: string; toDate?: string; type?: string }) {
+  listVouchers(params?: { fromDate?: string; toDate?: string; type?: string; page?: number; pageSize?: number }) {
     const query = new URLSearchParams();
     if (params?.fromDate) query.set('fromDate', params.fromDate);
     if (params?.toDate) query.set('toDate', params.toDate);
     if (params?.type) query.set('type', params.type);
+    if (params?.page != null) query.set('page', String(params.page));
+    if (params?.pageSize != null) query.set('pageSize', String(params.pageSize));
     const suffix = query.toString() ? `?${query}` : '';
-    return request<Voucher[]>(`/api/accounting/vouchers${suffix}`);
+    return request<PaginatedResult<Voucher>>(`/api/accounting/vouchers${suffix}`);
   },
 
   getDashboardSummary() {
