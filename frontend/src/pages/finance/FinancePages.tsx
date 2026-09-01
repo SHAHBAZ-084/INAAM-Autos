@@ -4,9 +4,7 @@ import { useFormShortcuts } from '../../hooks/useFormShortcuts';
 import {
   api,
   type ExpenseCategory,
-  type ExpenseRecord,
   type OtherIncomeCategory,
-  type OtherIncomeRecord,
   type PurchasePaymentMethod,
 } from '../../lib/api';
 import { formatDate, formatMoney } from '../../lib/format';

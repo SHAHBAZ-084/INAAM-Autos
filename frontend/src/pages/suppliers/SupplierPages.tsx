@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, type Supplier, type SupplierDetail } from '../../lib/api';
+import { api, type SupplierDetail } from '../../lib/api';
 import { formatDate, formatMoney } from '../../lib/format';
 import { confirmAction } from '../../lib/confirmAction';
 import { Plus } from 'lucide-react';
