@@ -487,6 +487,11 @@ export async function listProducts(params: ProductListParams = {}) {
     },
   } as const;
 
+  // NOTE: low_stock/out_of_stock cannot be paginated at the DB level because
+  // the stock threshold is per-product with a settings fallback. This fetches
+  // all matching rows and paginates in memory. Acceptable at current data
+  // volume; revisit if product catalog exceeds ~5,000 rows (e.g. by adding a
+  // computed/denormalized "isLowStock" boolean column that can be indexed).
   if (stockStatus === 'low_stock' || stockStatus === 'out_of_stock') {
     const candidates = await prisma.product.findMany({
       where,
