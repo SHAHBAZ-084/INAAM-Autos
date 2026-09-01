@@ -9,7 +9,7 @@ import { AddEPaymentPage } from './pages/accounts/AddEPaymentPage';
 import { CategoryManagePage } from './pages/accounts/CategoryManagePage';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
-import { AccountReportsPage, AccountBalancePage, TrialBalancePage, VouchersReportPage } from './pages/reports/ReportPages';
+import { TrialBalancePage } from './pages/reports/ReportPages';
 import {
   CategoryProfitReportPage,
   CurrentStockReportPage,
@@ -68,7 +68,6 @@ import {
   SupplierFormPage,
   SuppliersListPage,
 } from './pages/suppliers/SupplierPages';
-import { VoucherFormPage, VoucherListPage } from './pages/vouchers/VoucherPages';
 import {
   AccountsHubPage,
   CustomersHubPage,
@@ -141,15 +140,6 @@ export default function App() {
               <Route path="/accounts/manage/edit" element={<AccountManagePage mode="edit" />} />
               <Route path="/accounts/manage/remove" element={<AccountManagePage mode="remove" />} />
 
-              {/* Voucher routes kept unlinked from nav for debug / direct URL access */}
-              <Route path="/vouchers/payment" element={<VoucherFormPage kind="payment" />} />
-              <Route path="/vouchers/journal" element={<VoucherFormPage kind="journal" />} />
-              <Route path="/vouchers/receipt" element={<VoucherFormPage kind="receipt" />} />
-              <Route path="/vouchers/view" element={<VoucherListPage />} />
-
-              <Route path="/reports/accounts" element={<AccountReportsPage />} />
-              <Route path="/reports/account-balance" element={<AccountBalancePage />} />
-              <Route path="/reports/vouchers" element={<VouchersReportPage />} />
               <Route path="/reports/trial-balance" element={<TrialBalancePage />} />
 
               <Route path="/reports/sales/daily" element={<DailySalesReportPage />} />
