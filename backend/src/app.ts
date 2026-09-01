@@ -57,7 +57,9 @@ export function createApp() {
 
   /** One SQLite write at a time — overlapping deletes were freezing the desktop UI. */
   app.use((req, res, next) => {
-    if (req.method !== 'DELETE') {
+    // Serialize all write methods (not just DELETE) — SQLite allows one writer at a time.
+    const isWriteMethod = req.method === 'DELETE' || req.method === 'PATCH' || req.method === 'POST' || req.method === 'PUT';
+    if (!isWriteMethod) {
       next();
       return;
     }
