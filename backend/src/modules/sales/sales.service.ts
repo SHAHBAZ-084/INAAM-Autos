@@ -323,7 +323,7 @@ export async function createSale(input: CreateSaleInput) {
     });
 
     return invoice.id;
-  });
+  }, { timeout: 20000, maxWait: 10000 });
 
   const surplus = roundMoney(Math.max(0, amountReceived - totalAmount));
   let udhaarRecoveryApplied = 0;
