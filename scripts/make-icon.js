@@ -7,12 +7,16 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..');
-const src = path.join(root, 'frontend', 'public', 'logo.png');
+const srcCandidates = [
+  path.join(root, 'frontend', 'public', 'logo.jpg'),
+  path.join(root, 'frontend', 'public', 'logo.png'),
+];
+const src = srcCandidates.find((candidate) => fs.existsSync(candidate));
 const outIco = path.join(root, 'build', 'icon.ico');
 const outPng = path.join(root, 'build', 'icon.png');
 
-if (!fs.existsSync(src)) {
-  console.error('Missing logo:', src);
+if (!src) {
+  console.error('Missing logo: frontend/public/logo.jpg or logo.png');
   process.exit(1);
 }
 

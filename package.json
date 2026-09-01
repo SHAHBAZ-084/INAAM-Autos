@@ -10,7 +10,7 @@
     "dev:web": "concurrently -k \"npm run dev -w backend\" \"npm run dev -w frontend\"",
     "electron:dev": "npm run build:electron && wait-on http://127.0.0.1:5173 http://127.0.0.1:3847/api/health && cross-env NODE_ENV=development electron .",
     "electron:build": "npm run build -w backend && npm run build -w frontend && npm run build:electron",
-    "dist:win": "npm run electron:build && npm run db:generate -w backend && electron-builder --win",
+    "dist:win": "node scripts/make-icon.js && npm run electron:build && npm run db:generate -w backend && electron-builder --win",
     "build:electron": "tsc -p electron/tsconfig.json",
     "start": "cross-env NODE_ENV=production electron .",
     "postinstall": "npm run db:generate -w backend"

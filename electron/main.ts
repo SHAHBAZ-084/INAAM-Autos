@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron';
 import fs from 'fs';
 import Module from 'module';
 import path from 'path';
@@ -68,6 +68,7 @@ function createWindow(): void {
     minHeight: 700,
     title: 'INAAM AUTOS & SPARE PARTS',
     icon: iconPath,
+    autoHideMenuBar: true,
     show: false,
     backgroundColor: '#0A0A0A',
     webPreferences: {
@@ -76,6 +77,9 @@ function createWindow(): void {
       nodeIntegration: false,
     },
   });
+
+  mainWindow.setMenu(null);
+  mainWindow.setMenuBarVisibility(false);
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     console.error('Window failed to load:', errorCode, errorDescription);
@@ -132,6 +136,8 @@ registerPrintIpc();
 app.setName('INAAM AUTOS');
 
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null);
+
   if (!isDev) {
     // Prevent EADDRINUSE crashes when multiple instances are launched:
     // if another instance already started the backend on the same port,

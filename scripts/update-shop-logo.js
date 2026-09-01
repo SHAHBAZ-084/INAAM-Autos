@@ -16,11 +16,15 @@ async function main() {
   const dest = path.join(uploadsDir, filename);
   fs.copyFileSync(logoSource, dest);
 
-  const prisma = new PrismaClient();
-  await prisma.businessSettings.update({
-    where: { id: 1 },
-    data: { logoPath: path.join('uploads', filename) },
+  const dbPath = path.join(root, 'backend', 'prisma', 'data', 'inaam-autos.db').replace(/\\/g, '/');
+  const prisma = new PrismaClient({
+    datasources: { db: { url: `file:${dbPath}` } },
   });
+  await prisma.$executeRaw`
+    UPDATE BusinessSettings
+    SET logoPath = ${path.join('uploads', filename)}
+    WHERE id = 1
+  `;
   console.log('Updated shop logo at', dest);
   await prisma.$disconnect();
 }

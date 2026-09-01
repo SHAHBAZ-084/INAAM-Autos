@@ -72,6 +72,20 @@ if (!envExisted || !envLooksValid(envPath)) {
 fs.mkdirSync(dataDir, { recursive: true });
 console.log(`Ensured directory: ${path.relative(root, dataDir)}`);
 
+const legacyDb = path.join(dataDir, 'usman-garments.db');
+const appDb = path.join(dataDir, 'inaam-autos.db');
+if (!fs.existsSync(appDb) && fs.existsSync(legacyDb)) {
+  fs.copyFileSync(legacyDb, appDb);
+  for (const suffix of ['-wal', '-shm']) {
+    const legacySidecar = legacyDb + suffix;
+    const appSidecar = appDb + suffix;
+    if (fs.existsSync(legacySidecar) && !fs.existsSync(appSidecar)) {
+      fs.copyFileSync(legacySidecar, appSidecar);
+    }
+  }
+  console.log('Migrated usman-garments.db → inaam-autos.db');
+}
+
 run('npx', ['prisma', 'migrate', 'deploy'], backendDir);
 run('npm', ['run', 'db:seed', '-w', 'backend'], root);
 
