@@ -73,7 +73,7 @@ export function PurchaseEntryPage() {
   const [paidEdited, setPaidEdited] = useState(false);
 
   useEffect(() => {
-    api.listSuppliers().then(setSuppliers).catch(() => setSuppliers([]));
+    api.listSuppliers({ pageSize: 100 }).then((r) => setSuppliers(r.items)).catch(() => setSuppliers([]));
     api.listProductCategories().then(setCategories).catch(() => setCategories([]));
   }, []);
 
@@ -776,7 +776,7 @@ export function SupplierPaymentPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    api.listSuppliers().then(setSuppliers).catch(() => setSuppliers([]));
+    api.listSuppliers({ pageSize: 100 }).then((r) => setSuppliers(r.items)).catch(() => setSuppliers([]));
   }, []);
 
   const selected = suppliers.find((s) => s.id === supplierId);
@@ -805,7 +805,7 @@ export function SupplierPaymentPage() {
       });
       setMessage(result.confirmation.message);
       setAmount('');
-      setSuppliers(await api.listSuppliers());
+      setSuppliers((await api.listSuppliers({ pageSize: 100 })).items);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Payment failed');
     } finally {

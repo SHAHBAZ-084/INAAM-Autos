@@ -16,9 +16,10 @@ import {
 } from '../../components/ui/PageShell';
 
 export function SuppliersListPage() {
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [result, setResult] = useState<Awaited<ReturnType<typeof api.listSuppliers>> | null>(null);
   const [search, setSearch] = useState('');
   const [activeOnly, setActiveOnly] = useState(true);
+  const [page, setPage] = useState(1);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -26,7 +27,13 @@ export function SuppliersListPage() {
     setLoading(true);
     setError('');
     try {
-      setSuppliers(await api.listSuppliers({ search: search.trim() || undefined, activeOnly }));
+      const next = await api.listSuppliers({
+        search: search.trim() || undefined,
+        activeOnly,
+        page,
+        pageSize: 20,
+      });
+      setResult(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load suppliers');
     } finally {
@@ -36,7 +43,7 @@ export function SuppliersListPage() {
 
   useEffect(() => {
     void load();
-  }, [activeOnly]);
+  }, [activeOnly, page]);
 
   return (
     <PageShell
@@ -71,7 +78,7 @@ export function SuppliersListPage() {
           </div>
         </div>
         <div className="mt-4">
-          <SecondaryButton type="button" onClick={() => void load()} disabled={loading}>
+          <SecondaryButton type="button" onClick={() => { setPage(1); void load(); }} disabled={loading}>
             {loading ? 'Loading…' : 'Refresh'}
           </SecondaryButton>
         </div>
@@ -90,7 +97,7 @@ export function SuppliersListPage() {
             </tr>
           </thead>
           <tbody>
-            {suppliers.map((s) => (
+            {result?.items.map((s) => (
               <tr key={s.id} className="border-b border-border/60 hover:bg-surface1">
                 <td className="px-2 py-2">
                   <Link className="font-medium text-accent hover:underline" to={`/suppliers/${s.id}`}>
@@ -102,7 +109,7 @@ export function SuppliersListPage() {
                 <td className="px-2 py-2">{s.isActive ? 'Active' : 'Inactive'}</td>
               </tr>
             ))}
-            {!loading && suppliers.length === 0 ? (
+            {!loading && (result?.items.length ?? 0) === 0 ? (
               <tr>
                 <td colSpan={4} className="px-2 py-8 text-center text-textSecondary">
                   No suppliers yet.
@@ -112,6 +119,21 @@ export function SuppliersListPage() {
           </tbody>
         </table>
       </Panel>
+      {result ? (
+        <div className="mt-4 flex items-center justify-between">
+          <p className="text-sm text-textSecondary">
+            Page {result.page} of {result.totalPages} ({result.total} suppliers)
+          </p>
+          <div className="flex gap-2">
+            <SecondaryButton disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>
+              Previous
+            </SecondaryButton>
+            <SecondaryButton disabled={page >= result.totalPages} onClick={() => setPage((value) => value + 1)}>
+              Next
+            </SecondaryButton>
+          </div>
+        </div>
+      ) : null}
     </PageShell>
   );
 }

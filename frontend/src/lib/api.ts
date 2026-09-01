@@ -615,12 +615,14 @@ export const api = {
     });
   },
 
-  listSuppliers(params?: { activeOnly?: boolean; search?: string }) {
+  listSuppliers(params?: { activeOnly?: boolean; search?: string; page?: number; pageSize?: number }) {
     const query = new URLSearchParams();
     if (params?.search) query.set('search', params.search);
     if (params?.activeOnly === false) query.set('activeOnly', 'false');
+    if (params?.page != null) query.set('page', String(params.page));
+    if (params?.pageSize != null) query.set('pageSize', String(params.pageSize));
     const suffix = query.toString() ? `?${query}` : '';
-    return request<Supplier[]>(`/api/suppliers${suffix}`);
+    return request<PaginatedResult<Supplier>>(`/api/suppliers${suffix}`);
   },
   getSupplier(id: number) {
     return request<SupplierDetail>(`/api/suppliers/${id}`);

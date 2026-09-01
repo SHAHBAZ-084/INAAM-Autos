@@ -44,7 +44,16 @@ function serializeSupplier(
   };
 }
 
-export async function listSuppliers(params: { activeOnly?: boolean; search?: string } = {}) {
+export async function listSuppliers(params: {
+  activeOnly?: boolean;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+} = {}) {
+  const page = Math.max(1, params.page ?? 1);
+  const pageSize = Math.min(100, Math.max(1, params.pageSize ?? 20));
+  const skip = (page - 1) * pageSize;
+
   const where: Prisma.SupplierWhereInput = {};
   if (params.activeOnly !== false) where.isActive = true;
   if (params.search?.trim()) {
@@ -52,12 +61,27 @@ export async function listSuppliers(params: { activeOnly?: boolean; search?: str
     where.OR = [{ name: { contains: q } }, { phone: { contains: q } }];
   }
 
-  const rows = await prisma.supplier.findMany({
-    where,
-    include: { account: { include: { ledger: true } } },
-    orderBy: { name: 'asc' },
-  });
-  return rows.map(serializeSupplier);
+  const include = { account: { include: { ledger: true } } } as const;
+  const orderBy = { name: 'asc' } as const;
+
+  const [total, rows] = await Promise.all([
+    prisma.supplier.count({ where }),
+    prisma.supplier.findMany({
+      where,
+      include,
+      orderBy,
+      skip,
+      take: pageSize,
+    }),
+  ]);
+
+  return {
+    items: rows.map(serializeSupplier),
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
 }
 
 export async function getSupplier(id: number) {

@@ -27,10 +27,12 @@ const updateSchema = z.object({
 suppliersRouter.get(
   '/',
   asyncHandler(async (req, res) => {
+    const page = req.query.page ? parseInt(String(req.query.page), 10) : undefined;
+    const pageSize = req.query.pageSize ? parseInt(String(req.query.pageSize), 10) : undefined;
     const activeOnly = req.query.activeOnly !== 'false';
     const search = req.query.search ? String(req.query.search) : undefined;
-    const suppliers = await suppliersService.listSuppliers({ activeOnly, search });
-    res.json(suppliers);
+    const result = await suppliersService.listSuppliers({ activeOnly, search, page, pageSize });
+    res.json(result);
   }),
 );
 
