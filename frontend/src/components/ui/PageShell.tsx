@@ -102,27 +102,38 @@ type ClickableMetricTileProps = {
   to: string;
   accent?: 'default' | 'success' | 'warning' | 'danger' | 'info';
   comparison?: MetricComparison | null;
-};
-
-const KPI_ACCENT: Record<NonNullable<ClickableMetricTileProps['accent']>, string> = {
-  default: 'border-l-accent',
-  success: 'border-l-success',
-  warning: 'border-l-warning',
-  danger: 'border-l-danger',
-  info: 'border-l-info',
+  /** Visual size variant — hero/gauge for dashboard command zone. */
+  size?: 'default' | 'hero' | 'gauge' | 'compact';
+  /** Hide the hover link hint (dashboard tiles). */
+  hideLinkHint?: boolean;
+  className?: string;
 };
 
 /** Dashboard KPI card — navigates to a related report on click. */
-export function ClickableMetricTile({ label, value, sub, to, accent = 'default', comparison }: ClickableMetricTileProps) {
+export function ClickableMetricTile({
+  label,
+  value,
+  sub,
+  to,
+  accent = 'default',
+  comparison,
+  size = 'default',
+  hideLinkHint = false,
+  className = '',
+}: ClickableMetricTileProps) {
+  const sizeClass = size === 'default' ? '' : `kpi-card--${size}`;
   return (
-    <Link to={to} className={`kpi-card block border-l-4 ${KPI_ACCENT[accent]}`}>
+    <Link
+      to={to}
+      className={`kpi-card kpi-card--accent-${accent} ${sizeClass} ${className}`.trim()}
+    >
       <div className="flex items-start justify-between gap-2">
-        <p className="text-xs font-medium text-textSecondary">{label}</p>
+        <p className="kpi-card__label">{label}</p>
         <GrowthIndicator comparison={comparison} />
       </div>
-      <p className="mt-1 text-lg font-semibold text-textPrimary">{value}</p>
-      {sub ? <p className="mt-0.5 text-[10px] text-textMuted">{sub}</p> : null}
-      <p className="mt-1 text-[10px] text-accent">View details →</p>
+      <p className="kpi-card__value">{value}</p>
+      {sub ? <p className="kpi-card__sub">{sub}</p> : null}
+      {hideLinkHint ? null : <p className="kpi-card__hint">Open report</p>}
     </Link>
   );
 }

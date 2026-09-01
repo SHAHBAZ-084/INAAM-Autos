@@ -66,6 +66,12 @@
   --nav-hover-bg: rgba(200, 16, 46, 0.18);
   --nav-active-bg: #C8102E;
   --nav-active-text: #FFFFFF;
+
+  /* Dashboard — always light-surface panels with standard text tokens (readable in both themes) */
+  --dashboard-command-bg: var(--surface-2);
+  --dashboard-command-border: color-mix(in srgb, var(--fill-accent) 28%, var(--border));
+  --dashboard-collection-bg: var(--surface-2);
+  --dashboard-section-bg: var(--surface-1);
 }
 
 [data-theme='dark'] {
@@ -134,4 +140,10 @@
   --nav-hover-bg: rgba(200, 16, 46, 0.22);
   --nav-active-bg: #C8102E;
   --nav-active-text: #FFFFFF;
+
+  /* Dashboard — always light-surface panels with standard text tokens (readable in both themes) */
+  --dashboard-command-bg: var(--surface-2);
+  --dashboard-command-border: color-mix(in srgb, var(--fill-accent) 32%, var(--border));
+  --dashboard-collection-bg: var(--surface-2);
+  --dashboard-section-bg: var(--surface-1);
 }
