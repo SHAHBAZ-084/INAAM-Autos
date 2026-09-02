@@ -2,11 +2,8 @@ import { formatDate, formatMoney } from '../../lib/format';
 import { formatDeveloperCreditForPrint } from '../../config/printCredit';
 import type { BusinessSettings, ExchangeResult, SaleReturn } from '../../lib/api';
 import { resolveLogoDataUrl } from '../../lib/electronPrint';
-import {
-  buildPrintDocumentHeaderHtml,
-  printHeaderCss,
-  printHeaderFromSettings,
-} from '../print/PrintDocumentHeader';
+import { buildSaleReceiptHeaderHtml } from './InvoicePrint';
+import { parseDeveloperConfig } from '../../config/developerPrint';
 import { RECEIPT_PAGE_WIDTH_MM, RECEIPT_CONTENT_WIDTH_MM } from './InvoicePrint';
 
 function escapeHtml(text: string): string {
@@ -89,17 +86,11 @@ export function buildReturnReceiptHtml(
     : `<p class="row total"><span>Refund</span><span>Rs ${formatMoney(saleReturn!.refundAmount)}</span></p>`;
 
   const logoSrc = options.logoSrc ?? settings.logoUrl;
-  const headerHtml = buildPrintDocumentHeaderHtml(
-    printHeaderFromSettings(settings, {
-      title,
-      logoSrc,
-      generatedAt: formatDate(data.date),
-    }),
-  );
+  const printConfig = parseDeveloperConfig(settings.developerConfig);
+  const headerHtml = buildSaleReceiptHeaderHtml(settings, logoSrc, printConfig);
 
   return `<!DOCTYPE html><html><head><title>${title}</title>
 <style>
-  ${printHeaderCss()}
   * { box-sizing: border-box; }
   @page { size: ${RECEIPT_PAGE_WIDTH_MM}mm auto; margin: 0; }
   body { font-family: Arial, sans-serif; font-size: 13px; color: #000; margin: 0 auto; width: ${RECEIPT_CONTENT_WIDTH_MM}mm; max-width: ${RECEIPT_CONTENT_WIDTH_MM}mm; overflow-x: hidden; font-weight: 700; padding: 1.5mm 0 2mm; }
@@ -113,6 +104,11 @@ export function buildReturnReceiptHtml(
     margin: 0 auto 6px;
     background: #ffffff;
   }
+  .header { text-align: center; padding: 0 0 2px; }
+  .shop-name { font-size: 18px; font-weight: 800; letter-spacing: 0.02em; line-height: 1.2; word-wrap: break-word; color: #000; }
+  .address { font-size: 11px; color: #000; font-weight: 700; line-height: 1.35; word-wrap: break-word; }
+  .contacts { margin-top: 3px; }
+  .contact { font-size: 11px; color: #000; margin: 1px 0; font-weight: 700; }
   h1 { font-size: 18px; font-weight: 800; text-align: center; margin: 0 0 4px; word-wrap: break-word; color: #000; }
   h2 { font-size: 14px; font-weight: 800; margin: 8px 0 4px; color: #000; }
   .meta { text-align: center; font-size: 11px; font-weight: 700; color: #000; margin: 2px 0; word-wrap: break-word; }
@@ -165,6 +161,8 @@ export function buildReturnReceiptHtml(
   .credit { text-align: center; font-size: 10px; font-weight: 700; color: #000; margin-top: 8px; }
 </style></head><body>
   ${headerHtml}
+  <h1>${escapeHtml(title)}</h1>
+  <p class="meta">Generated: ${escapeHtml(formatDate(data.date))}</p>
   <p class="meta">Invoice: ${escapeHtml(invoiceNumber)} · ${formatDate(data.date)}</p>
   <h2>Returned items</h2>
   <table class="items">

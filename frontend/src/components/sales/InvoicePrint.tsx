@@ -24,7 +24,7 @@ function escapeHtml(text: string): string {
 }
 
 /** Centered thermal receipt header — original sale-invoice layout (not report grid header). */
-function buildSaleReceiptHeaderHtml(
+export function buildSaleReceiptHeaderHtml(
   settings: BusinessSettings,
   logoSrc: string | null | undefined,
   printConfig: ReturnType<typeof parseDeveloperConfig>,
