@@ -109,6 +109,7 @@ export function buildReturnReceiptHtml(
   .address { font-size: 11px; color: #000; font-weight: 700; line-height: 1.35; word-wrap: break-word; }
   .contacts { margin-top: 3px; }
   .contact { font-size: 11px; color: #000; margin: 1px 0; font-weight: 700; }
+  .rule { border: none; border-top: 1.5px dashed #000; margin: 6px 0; height: 0; }
   h1 { font-size: 18px; font-weight: 800; text-align: center; margin: 0 0 4px; word-wrap: break-word; color: #000; }
   h2 { font-size: 14px; font-weight: 800; margin: 8px 0 4px; color: #000; }
   .meta { text-align: center; font-size: 11px; font-weight: 700; color: #000; margin: 2px 0; word-wrap: break-word; }
@@ -161,6 +162,7 @@ export function buildReturnReceiptHtml(
   .credit { text-align: center; font-size: 10px; font-weight: 700; color: #000; margin-top: 8px; }
 </style></head><body>
   ${headerHtml}
+  <div class="rule"></div>
   <h1>${escapeHtml(title)}</h1>
   <p class="meta">Generated: ${escapeHtml(formatDate(data.date))}</p>
   <p class="meta">Invoice: ${escapeHtml(invoiceNumber)} · ${formatDate(data.date)}</p>
