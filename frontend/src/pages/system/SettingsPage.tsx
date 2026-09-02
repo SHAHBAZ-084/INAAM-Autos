@@ -33,11 +33,11 @@ const emptyForm = {
   businessName: APP_DISPLAY_NAME,
   tagline: APP_TAGLINE,
   ownerName: '',
-  phoneLabel: 'M Arslan',
-  phone: '03024979697',
-  whatsappLabel: 'M Usman',
-  whatsapp: '03006195469',
-  address: 'Bano Bazar Al Nissa Road Near Taleem Un Nisa Madrasa Chishtian',
+  phoneLabel: 'Ikramullah',
+  phone: '03096986000',
+  whatsappLabel: 'Ehsanullah',
+  whatsapp: '03064998540',
+  address: 'Basket Ball Ground U Market Highway road Chishtian',
   developerCreditLine: DEFAULT_DEVELOPER_CREDIT_LINE,
   invoiceFooter: APP_INVOICE_FOOTER,
   returnPolicy:
@@ -564,7 +564,7 @@ export function SettingsPage() {
                     <TextInput
                       value={form.phoneLabel}
                       onChange={(e) => patchField('phoneLabel', e.target.value)}
-                      placeholder="e.g. M Arslan"
+                      placeholder="e.g. Ikramullah"
                     />
                   </div>
                   <div>
@@ -572,7 +572,7 @@ export function SettingsPage() {
                     <TextInput
                       value={form.phone}
                       onChange={(e) => patchField('phone', e.target.value)}
-                      placeholder="03024979697"
+                      placeholder="03096986000"
                     />
                   </div>
                 </div>
@@ -582,7 +582,7 @@ export function SettingsPage() {
                     <TextInput
                       value={form.whatsappLabel}
                       onChange={(e) => patchField('whatsappLabel', e.target.value)}
-                      placeholder="e.g. M Usman"
+                      placeholder="e.g. Ehsanullah"
                     />
                   </div>
                   <div>
@@ -590,7 +590,7 @@ export function SettingsPage() {
                     <TextInput
                       value={form.whatsapp}
                       onChange={(e) => patchField('whatsapp', e.target.value)}
-                      placeholder="03006195469"
+                      placeholder="03064998540"
                     />
                   </div>
                 </div>

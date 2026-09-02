@@ -35,11 +35,11 @@ export const DEFAULT_BUSINESS_SETTINGS = {
   businessName: APP_DISPLAY_NAME,
   tagline: APP_TAGLINE,
   ownerName: '',
-  phoneLabel: 'M Arslan',
-  phone: '03024979697',
-  whatsappLabel: 'M Usman',
-  whatsapp: '03006195469',
-  address: 'Bano Bazar Al Nissa Road Near Taleem Un Nisa Madrasa Chishtian',
+  phoneLabel: 'Ikramullah',
+  phone: '03096986000',
+  whatsappLabel: 'Ehsanullah',
+  whatsapp: '03064998540',
+  address: 'Basket Ball Ground U Market Highway road Chishtian',
   invoiceFooter: APP_INVOICE_FOOTER,
   returnPolicy:
     'Returns accepted within 7 days with original receipt. Items must be unused and in original condition.',
@@ -61,6 +61,12 @@ export const DEFAULT_BUSINESS_SETTINGS = {
 };
 
 const LEGACY_ADDRESS = 'Al-Nisa Road, Chishtian';
+const PREVIOUS_INAAM_ADDRESS =
+  'Bano Bazar Al Nissa Road Near Taleem Un Nisa Madrasa Chishtian';
+const PREVIOUS_INAAM_PHONE_LABEL = 'M Arslan';
+const PREVIOUS_INAAM_PHONE = '03024979697';
+const PREVIOUS_INAAM_WHATSAPP_LABEL = 'M Usman';
+const PREVIOUS_INAAM_WHATSAPP = '03006195469';
 const LEGACY_PHONE = '0300-6195469';
 const LEGACY_CREDIT = 'AS Solutions — Ali & Shahbaz — 0322-0726006';
 
@@ -174,8 +180,24 @@ export async function ensureBusinessSettings() {
   });
   if (existing) {
     const patch: Prisma.BusinessSettingsUpdateInput = {};
-    if (existing.address.trim() === LEGACY_ADDRESS) {
+    if (existing.address.trim() === LEGACY_ADDRESS || existing.address.trim() === PREVIOUS_INAAM_ADDRESS) {
       patch.address = DEFAULT_BUSINESS_SETTINGS.address;
+    }
+    const phoneLabel = (existing as { phoneLabel?: string }).phoneLabel?.trim() ?? '';
+    if (
+      existing.phone.trim() === PREVIOUS_INAAM_PHONE &&
+      (phoneLabel === PREVIOUS_INAAM_PHONE_LABEL || phoneLabel === '')
+    ) {
+      patch.phone = DEFAULT_BUSINESS_SETTINGS.phone;
+      patch.phoneLabel = DEFAULT_BUSINESS_SETTINGS.phoneLabel;
+    }
+    const whatsappLabel = (existing as { whatsappLabel?: string }).whatsappLabel?.trim() ?? '';
+    if (
+      existing.whatsapp.trim() === PREVIOUS_INAAM_WHATSAPP &&
+      (whatsappLabel === PREVIOUS_INAAM_WHATSAPP_LABEL || whatsappLabel === '')
+    ) {
+      patch.whatsapp = DEFAULT_BUSINESS_SETTINGS.whatsapp;
+      patch.whatsappLabel = DEFAULT_BUSINESS_SETTINGS.whatsappLabel;
     }
     if (existing.phone.trim() === LEGACY_PHONE) {
       patch.phone = DEFAULT_BUSINESS_SETTINGS.phone;
