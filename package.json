@@ -1,6 +1,6 @@
 {
   "name": "inaam-autos",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "private": true,
   "description": "Offline desktop POS for INAAM AUTOS & SPARE PARTS — Electron + React + Express + SQLite",
   "main": "dist-electron/main.js",

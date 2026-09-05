@@ -9,6 +9,7 @@ import {
   bootstrapChartOfAccounts,
   fiscalYearLabelForDate,
 } from '../modules/accounting/accounting.service';
+import { ensureCpListCatalog } from '../modules/products/cp-list-catalog';
 import { ensureDeveloperPassphraseHash } from '../modules/settings/identity-access.service';
 import { BUSINESS_SETTINGS_ID, ensureBusinessSettings } from '../modules/settings/settings.service';
 
@@ -98,6 +99,14 @@ export async function ensureFirstRunDefaults(): Promise<void> {
     }
   } catch (err) {
     logger.warn('Business settings / default logo ensure skipped', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  try {
+    await ensureCpListCatalog();
+  } catch (err) {
+    logger.warn('CP list catalog seed skipped', {
       error: err instanceof Error ? err.message : String(err),
     });
   }
