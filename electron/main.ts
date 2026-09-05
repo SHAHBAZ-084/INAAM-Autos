@@ -191,7 +191,7 @@ app.on('window-all-closed', () => {
   }
 });
 
-async function waitForBackend(maxAttempts = 30): Promise<void> {
+async function waitForBackend(maxAttempts = 480): Promise<void> {
   const url = `http://127.0.0.1:${BACKEND_PORT}/api/health`;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -199,7 +199,7 @@ async function waitForBackend(maxAttempts = 30): Promise<void> {
       const response = await fetch(url);
       if (response.ok) return;
     } catch {
-      // Server not ready yet.
+      // Server not ready yet — first-run CP catalog seed can take 20–60s.
     }
 
     await new Promise((resolve) => setTimeout(resolve, 250));
