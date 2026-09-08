@@ -77,7 +77,7 @@ export async function ensureCpListCatalog(): Promise<void> {
         categoryId: category.id,
         purchasePrice: item.purchasePrice ?? 0,
         salePrice: item.salePrice ?? 0,
-        openingStock: 0,
+        openingStock: item.openingStock ?? 0,
         variants: item.variants?.map((v) => ({ size: v.size, currentStock: 0 })),
       });
       created += 1;
