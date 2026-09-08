@@ -75,8 +75,8 @@ export async function ensureCpListCatalog(): Promise<void> {
       await createProduct({
         name: item.name,
         categoryId: category.id,
-        purchasePrice: 0,
-        salePrice: 0,
+        purchasePrice: item.purchasePrice ?? 0,
+        salePrice: item.salePrice ?? 0,
         openingStock: 0,
         variants: item.variants?.map((v) => ({ size: v.size, currentStock: 0 })),
       });

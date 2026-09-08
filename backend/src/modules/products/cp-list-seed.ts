@@ -2,7 +2,13 @@
 // re-run the generator script against an updated price list instead.
 
 export type SeedVariant = { size: string };
-export type SeedProduct = { name: string; category: string; variants?: SeedVariant[] };
+export type SeedProduct = {
+  name: string;
+  category: string;
+  variants?: SeedVariant[];
+  purchasePrice?: number;
+  salePrice?: number;
+};
 
 export const SEED_CATEGORIES: string[] = [
   'CD70 Euro 2',
@@ -23,6 +29,7 @@ export const SEED_CATEGORIES: string[] = [
   'JH90',
   'C100',
   'Universal / Generic Parts',
+  'Fancy Items',
 ];
 
 export const SEED_PRODUCTS: SeedProduct[] = [
@@ -651,6 +658,82 @@ export const SEED_PRODUCTS: SeedProduct[] = [
   },
   { name: 'FUEL FILTER', category: 'Universal / Generic Parts' },
   { name: 'INDICATOR (SPECIAL)', category: 'Universal / Generic Parts' },
+  // --- Fancy Items category (source: Fancy_Items.pdf) ---
+  // Purchase/Sale prices below come directly from the source sheet. Quantity is
+  // intentionally NOT seeded — stock always starts at 0, same as the rest of the catalog.
+  { name: 'Mini Drive W/Y Simple L', category: 'Fancy Items', purchasePrice: 150, salePrice: 450 },
+  { name: 'Mini Drive Colour L', category: 'Fancy Items', purchasePrice: 280, salePrice: 650 },
+  { name: 'S 20 W/Y Dolphin L', category: 'Fancy Items', purchasePrice: 260, salePrice: 550 },
+  { name: 'S 20 Dolphin Mokiy Pro L', category: 'Fancy Items', purchasePrice: 300, salePrice: 600 },
+  { name: 'S 30 Dolphin B.B L', category: 'Fancy Items', purchasePrice: 350, salePrice: 700 },
+  { name: 'S 30 TNT Ring L', category: 'Fancy Items', purchasePrice: 750, salePrice: 1200 },
+  { name: 'S 40 Jali Style L', category: 'Fancy Items', purchasePrice: 800, salePrice: 1500 },
+  { name: 'Owl L Steel G-Box', category: 'Fancy Items', purchasePrice: 480, salePrice: 900 },
+  { name: 'Owl L Steel AR 100', category: 'Fancy Items', purchasePrice: 450, salePrice: 900 },
+  { name: 'Owl L Plastic', category: 'Fancy Items', purchasePrice: 300, salePrice: 650 },
+  { name: 'Owl L Glass', category: 'Fancy Items', purchasePrice: 380, salePrice: 700 },
+  { name: 'Ishara Mini Promax', category: 'Fancy Items', purchasePrice: 190, salePrice: 350 },
+  { name: 'Hub L Seat W/Y', category: 'Fancy Items', purchasePrice: 150, salePrice: 400 },
+  { name: 'BMW Lock Small', category: 'Fancy Items', purchasePrice: 460, salePrice: 800 },
+  { name: 'BMW Lock Big', category: 'Fancy Items', purchasePrice: 420, salePrice: 750 },
+  { name: 'V8 L', category: 'Fancy Items', purchasePrice: 650, salePrice: 1000 },
+  { name: 'L 19 Moto Steel', category: 'Fancy Items', purchasePrice: 750, salePrice: 1250 },
+  { name: 'Skull Nut 4 Piece', category: 'Fancy Items', purchasePrice: 120, salePrice: 250 },
+  { name: 'BL Cover White CD', category: 'Fancy Items', purchasePrice: 70, salePrice: 120 },
+  { name: 'Ishara Cover White', category: 'Fancy Items', purchasePrice: 28, salePrice: 70 },
+  { name: 'Headlight Bulb Running', category: 'Fancy Items', purchasePrice: 300, salePrice: 450 },
+  { name: 'Backlight Bulb Multi Running', category: 'Fancy Items', purchasePrice: 80, salePrice: 130 },
+  { name: 'Meter Bulb L White', category: 'Fancy Items', purchasePrice: 38, salePrice: 80 },
+  { name: 'Meter Bulb L Multi', category: 'Fancy Items', purchasePrice: 35, salePrice: 80 },
+  { name: 'Para Module Flash', category: 'Fancy Items', purchasePrice: 35, salePrice: 80 },
+  { name: 'Tube Module W/B/R', category: 'Fancy Items', purchasePrice: 15, salePrice: 50 },
+  { name: 'Silencer Pati 125', category: 'Fancy Items', purchasePrice: 260, salePrice: 500 },
+  { name: 'Tik Tok L 2 Piece', category: 'Fancy Items', purchasePrice: 190, salePrice: 350 },
+  { name: 'Ishara Card U+D', category: 'Fancy Items', purchasePrice: 900, salePrice: 1300 },
+  { name: 'Ishara Card Running', category: 'Fancy Items', purchasePrice: 1100, salePrice: 1500 },
+  { name: 'Button 0/1 Normal', category: 'Fancy Items', purchasePrice: 55, salePrice: 100 },
+  { name: 'Button 0/1 China', category: 'Fancy Items', purchasePrice: 75, salePrice: 120 },
+  { name: 'Button 0/0/1 China', category: 'Fancy Items', purchasePrice: 100, salePrice: 180 },
+  { name: 'LED 6 L', category: 'Fancy Items', purchasePrice: 280, salePrice: 550 },
+  { name: 'LED 12 L', category: 'Fancy Items', purchasePrice: 300, salePrice: 600 },
+  { name: 'LED 15 L', category: 'Fancy Items', purchasePrice: 360, salePrice: 650 },
+  { name: 'G1 L Set', category: 'Fancy Items', purchasePrice: 520, salePrice: 750 },
+  { name: 'Sigger Horn Pan Pan', category: 'Fancy Items', purchasePrice: 1570, salePrice: 1850 },
+  { name: 'Golden Box Horn Pan Pan', category: 'Fancy Items', purchasePrice: 880, salePrice: 1250 },
+  { name: 'M6 Moto L', category: 'Fancy Items', purchasePrice: 750, salePrice: 1000 },
+  { name: 'M3 HJG L', category: 'Fancy Items', purchasePrice: 950, salePrice: 1300 },
+  { name: 'M4 HJG L', category: 'Fancy Items', purchasePrice: 1050, salePrice: 1500 },
+  { name: 'Chain Cover Goat', category: 'Fancy Items', purchasePrice: 280, salePrice: 450 },
+  { name: 'Horn Black Te Te', category: 'Fancy Items', purchasePrice: 150, salePrice: 250 },
+  { name: 'Headlight Gool GBF', category: 'Fancy Items', purchasePrice: 550, salePrice: 800 },
+  { name: 'Headlight Gool Rani', category: 'Fancy Items', purchasePrice: 220, salePrice: 450 },
+  { name: 'Grip Form Ring', category: 'Fancy Items', purchasePrice: 50, salePrice: 100 },
+  { name: 'Grip Firm Moti', category: 'Fancy Items', purchasePrice: 80, salePrice: 150 },
+  { name: 'Grip 4-P', category: 'Fancy Items', purchasePrice: 85, salePrice: 150 },
+  { name: 'Grip Honda NS', category: 'Fancy Items', purchasePrice: 280, salePrice: 450 },
+  { name: 'Grip 208#', category: 'Fancy Items', purchasePrice: 330, salePrice: 500 },
+  { name: 'Oil Gauge M', category: 'Fancy Items', purchasePrice: 30, salePrice: 80 },
+  { name: 'Steel Gauge Steel', category: 'Fancy Items', purchasePrice: 320, salePrice: 500 },
+  { name: 'Backlight MB', category: 'Fancy Items', purchasePrice: 180, salePrice: 300 },
+  { name: 'Rubber Dumchi F', category: 'Fancy Items', purchasePrice: 20, salePrice: 60 },
+  { name: 'Rubber Dumchi R', category: 'Fancy Items', purchasePrice: 25, salePrice: 60 },
+  { name: 'Skull Gr LED', category: 'Fancy Items', purchasePrice: 1350, salePrice: 1700 },
+  { name: 'MokyPro New LED', category: 'Fancy Items', purchasePrice: 1350, salePrice: 1700 },
+  { name: 'Smiley Spring Metal', category: 'Fancy Items', purchasePrice: 110, salePrice: 200 },
+  { name: 'Rubber Taj', category: 'Fancy Items', purchasePrice: 80, salePrice: 120 },
+  { name: 'Smiley Spring Simple', category: 'Fancy Items', purchasePrice: 50, salePrice: 100 },
+  { name: 'Steel Monogram', category: 'Fancy Items', purchasePrice: 120, salePrice: 200 },
+  { name: 'Dumchi Color F', category: 'Fancy Items', purchasePrice: 25, salePrice: 50 },
+  { name: 'Dumchi Color R', category: 'Fancy Items', purchasePrice: 30, salePrice: 50 },
+  { name: 'Chain Cover Light', category: 'Fancy Items', purchasePrice: 85, salePrice: 150 },
+  { name: 'Bomb Nut', category: 'Fancy Items', purchasePrice: 34, salePrice: 70 },
+  { name: 'Key Switch', category: 'Fancy Items', purchasePrice: 230, salePrice: 400 },
+  { name: 'Nozzle 4-P Bullet', category: 'Fancy Items', purchasePrice: 260, salePrice: 400 },
+  { name: 'Bell NS', category: 'Fancy Items', purchasePrice: 220, salePrice: 350 },
+  { name: 'Safi Premium', category: 'Fancy Items', purchasePrice: 220, salePrice: 300 },
+  { name: 'Mooch Ribbon', category: 'Fancy Items', purchasePrice: 30, salePrice: 50 },
+  { name: 'Cluste8', category: 'Fancy Items', purchasePrice: 20, salePrice: 20 },
+  { name: 'BL Cover White 125', category: 'Fancy Items', purchasePrice: 80, salePrice: 150 },
 ];
 
-// Totals: 558 model-specific products + 7 universal families (33 variants) + 2 standalone universal products = 567 products, 18 categories.
+// Totals: 558 model-specific products + 7 universal families (33 variants) + 2 standalone universal products + 73 Fancy Items products = 640 products, 19 categories.
