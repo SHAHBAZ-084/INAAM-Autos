@@ -1,5 +1,10 @@
 import { Prisma, StockMovementType } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
+import {
+  parseCustomFieldsJson,
+  stringifyCustomFields,
+  validateAndNormalizeCustomFieldValues,
+} from './product-custom-fields.service';
 import { AppError } from '../../utils/helpers';
 import { ensureBusinessSettings } from '../settings/settings.service';
 import { generateUniqueBarcode, generateUniqueCategoryCode, generateUniqueProductCode } from './product-identity';
@@ -330,6 +335,7 @@ function serializeProduct(row: {
   supplierId: number | null;
   imagePath: string | null;
   notes: string | null;
+  customFieldsJson?: string;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -348,7 +354,7 @@ function serializeProduct(row: {
 }, defaultLowStockLimit: number) {
   const effectiveLow = row.lowStockLimit ?? defaultLowStockLimit;
   const damagedStock = row.damagedStock ?? 0;
-  const { sku, variants, ...rest } = row;
+  const { sku, variants, customFieldsJson, ...rest } = row;
 
   const serializedVariants = variants?.map((v) => {
     const { sku: variantSku, ...variantRest } = v;
@@ -385,6 +391,7 @@ function serializeProduct(row: {
     isLowStock,
     isOutOfStock,
     hasDamagedStock: damagedStock > 0,
+    customFields: parseCustomFieldsJson(customFieldsJson),
     category: row.category
       ? { id: row.category.id, name: row.category.name, code: row.category.code ?? '' }
       : null,
@@ -571,6 +578,7 @@ export type CreateProductInput = {
   supplierId?: number | null;
   imagePath?: string | null;
   notes?: string | null;
+  customFields?: Record<string, string>;
   variants?: Array<{
     size?: string | null;
     colour?: string | null;
@@ -611,6 +619,8 @@ export async function createProduct(input: CreateProductInput) {
     // allowed — empty opening stock
   }
 
+  const customFields = await validateAndNormalizeCustomFieldValues(input.customFields);
+
   try {
     const productId = await prisma.$transaction(async (tx) => {
       let categoryCode: string | null = null;
@@ -639,6 +649,7 @@ export async function createProduct(input: CreateProductInput) {
           supplierId: input.supplierId ?? null,
           imagePath: input.imagePath?.trim() || null,
           notes: input.notes?.trim() || null,
+          customFieldsJson: stringifyCustomFields(customFields),
         },
       });
 
@@ -734,6 +745,11 @@ export async function updateProduct(id: number, input: UpdateProductInput) {
   if (input.imagePath !== undefined) data.imagePath = input.imagePath?.trim() || null;
   if (input.notes !== undefined) data.notes = input.notes?.trim() || null;
   if (input.needsVariants !== undefined) data.needsVariants = input.needsVariants;
+  if (input.customFields !== undefined) {
+    data.customFieldsJson = stringifyCustomFields(
+      await validateAndNormalizeCustomFieldValues(input.customFields),
+    );
+  }
 
   try {
     await prisma.product.update({ where: { id }, data });

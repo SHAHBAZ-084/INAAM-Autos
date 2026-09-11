@@ -16,7 +16,7 @@ import { DEFAULT_DEVELOPER_CONFIG, parseDeveloperConfig, type DeveloperPrintConf
 import { PROTECTED_SETTINGS_FIELD_KEYS } from '../../config/protectedSettingsFields';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAccessComboListener } from '../../hooks/useAccessComboListener';
-import { api, type BusinessSettings, type CustomLabelPreset, type CustomLabelStyle } from '../../lib/api';
+import { api, type BusinessSettings, type CustomLabelPreset, type CustomLabelStyle, type ProductCustomField } from '../../lib/api';
 import { confirmAction } from '../../lib/confirmAction';
 import { LabelStyleDesigner } from '../../components/products/LabelStyleDesigner';
 import {
@@ -94,6 +94,14 @@ export function SettingsPage() {
   const [editingCategoryId, setEditingCategoryId] = useState<number | ''>('');
   const [editingCategoryName, setEditingCategoryName] = useState('');
   const [categoryBusy, setCategoryBusy] = useState(false);
+  const [productCustomFields, setProductCustomFields] = useState<ProductCustomField[]>([]);
+  const [customFieldLabel, setCustomFieldLabel] = useState('');
+  const [customFieldType, setCustomFieldType] = useState<'TEXT' | 'NUMBER' | 'SELECT'>('TEXT');
+  const [customFieldOptions, setCustomFieldOptions] = useState('');
+  const [customFieldRequired, setCustomFieldRequired] = useState(false);
+  const [customFieldShowOnBarcode, setCustomFieldShowOnBarcode] = useState(false);
+  const [editingCustomFieldId, setEditingCustomFieldId] = useState<number | ''>('');
+  const [customFieldBusy, setCustomFieldBusy] = useState(false);
 
   const knownLabelKeys = useMemo(
     () => [...HARDCODED_LABEL_KEYS, ...customLabelPresets.map((p) => p.key)],
@@ -239,6 +247,11 @@ export function SettingsPage() {
           setCategories(await api.listProductCategories());
         } catch {
           setCategories([]);
+        }
+        try {
+          setProductCustomFields(await api.listProductCustomFields(true));
+        } catch {
+          setProductCustomFields([]);
         }
         await refreshCustomLabelPresets();
         await refreshCustomLabelStyles();
@@ -968,6 +981,200 @@ export function SettingsPage() {
               ))}
             </ul>
           </Tile>
+
+          {identityEditActive ? (
+            <Tile>
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-textMuted">
+                Product detail fields
+              </h2>
+              <p className="mb-3 text-xs text-textMuted">
+                Create boxes like Model that appear automatically on Add/Edit Product. Check “On barcode label” to print
+                that field’s value on barcode stickers.
+              </p>
+              <div className="mb-3 grid gap-2 sm:grid-cols-2">
+                <div>
+                  <FieldLabel>Field label</FieldLabel>
+                  <TextInput
+                    value={customFieldLabel}
+                    onChange={(e) => setCustomFieldLabel(e.target.value)}
+                    placeholder="e.g. Model"
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Type</FieldLabel>
+                  <select
+                    className="mt-1 w-full rounded-lg border border-border bg-surface2 px-3 py-2 text-sm"
+                    value={customFieldType}
+                    onChange={(e) => setCustomFieldType(e.target.value as 'TEXT' | 'NUMBER' | 'SELECT')}
+                  >
+                    <option value="TEXT">Text</option>
+                    <option value="NUMBER">Number</option>
+                    <option value="SELECT">Select (dropdown)</option>
+                  </select>
+                </div>
+                {customFieldType === 'SELECT' ? (
+                  <div className="sm:col-span-2">
+                    <FieldLabel>Options (comma-separated)</FieldLabel>
+                    <TextInput
+                      value={customFieldOptions}
+                      onChange={(e) => setCustomFieldOptions(e.target.value)}
+                      placeholder="CG125, CD70, CB150"
+                    />
+                  </div>
+                ) : null}
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={customFieldRequired}
+                    onChange={(e) => setCustomFieldRequired(e.target.checked)}
+                  />
+                  Required on product form
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={customFieldShowOnBarcode}
+                    onChange={(e) => setCustomFieldShowOnBarcode(e.target.checked)}
+                  />
+                  On barcode label
+                </label>
+              </div>
+              <div className="mb-4 flex flex-wrap gap-2">
+                <PrimaryButton
+                  type="button"
+                  disabled={customFieldBusy || !customFieldLabel.trim()}
+                  onClick={async () => {
+                    setCustomFieldBusy(true);
+                    setError('');
+                    try {
+                      const options =
+                        customFieldType === 'SELECT'
+                          ? customFieldOptions
+                              .split(',')
+                              .map((o) => o.trim())
+                              .filter(Boolean)
+                          : [];
+                      if (editingCustomFieldId) {
+                        const updated = await api.updateProductCustomField(editingCustomFieldId, {
+                          label: customFieldLabel.trim(),
+                          fieldType: customFieldType,
+                          options,
+                          required: customFieldRequired,
+                          showOnBarcode: customFieldShowOnBarcode,
+                        });
+                        setProductCustomFields((prev) =>
+                          prev.map((f) => (f.id === updated.id ? updated : f)),
+                        );
+                        setMessage('Product detail field updated.');
+                      } else {
+                        const created = await api.createProductCustomField({
+                          label: customFieldLabel.trim(),
+                          fieldType: customFieldType,
+                          options,
+                          required: customFieldRequired,
+                          showOnBarcode: customFieldShowOnBarcode,
+                        });
+                        setProductCustomFields((prev) => [...prev, created]);
+                        setMessage('Product detail field added — it now shows on Add Product.');
+                      }
+                      setCustomFieldLabel('');
+                      setCustomFieldType('TEXT');
+                      setCustomFieldOptions('');
+                      setCustomFieldRequired(false);
+                      setCustomFieldShowOnBarcode(false);
+                      setEditingCustomFieldId('');
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : 'Failed to save field');
+                    } finally {
+                      setCustomFieldBusy(false);
+                    }
+                  }}
+                >
+                  {editingCustomFieldId ? 'Save field' : 'Add field'}
+                </PrimaryButton>
+                {editingCustomFieldId ? (
+                  <SecondaryButton
+                    type="button"
+                    onClick={() => {
+                      setEditingCustomFieldId('');
+                      setCustomFieldLabel('');
+                      setCustomFieldType('TEXT');
+                      setCustomFieldOptions('');
+                      setCustomFieldRequired(false);
+                      setCustomFieldShowOnBarcode(false);
+                    }}
+                  >
+                    Cancel edit
+                  </SecondaryButton>
+                ) : null}
+              </div>
+              <ul className="space-y-2">
+                {productCustomFields
+                  .filter((f) => f.isActive)
+                  .map((field) => (
+                    <li
+                      key={field.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface1 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-textPrimary">{field.label}</p>
+                        <p className="text-xs text-textMuted">
+                          {field.fieldType}
+                          {field.required ? ' · required' : ''}
+                          {field.showOnBarcode ? ' · barcode' : ''}
+                          {' · key: '}
+                          {field.key}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <SecondaryButton
+                          type="button"
+                          onClick={() => {
+                            setEditingCustomFieldId(field.id);
+                            setCustomFieldLabel(field.label);
+                            setCustomFieldType(field.fieldType);
+                            setCustomFieldOptions(field.options.join(', '));
+                            setCustomFieldRequired(field.required);
+                            setCustomFieldShowOnBarcode(field.showOnBarcode);
+                          }}
+                        >
+                          Edit
+                        </SecondaryButton>
+                        <SecondaryButton
+                          type="button"
+                          disabled={customFieldBusy}
+                          onClick={async () => {
+                            const ok = await confirmAction(
+                              `Remove “${field.label}”? Existing product values stay in the database but the box disappears from forms.`,
+                              { title: 'Delete field', confirmLabel: 'Delete' },
+                            );
+                            if (!ok) return;
+                            setCustomFieldBusy(true);
+                            setError('');
+                            try {
+                              const removed = await api.deleteProductCustomField(field.id);
+                              setProductCustomFields((prev) =>
+                                prev.map((f) => (f.id === removed.id ? removed : f)),
+                              );
+                              setMessage('Product detail field removed.');
+                            } catch (err) {
+                              setError(err instanceof Error ? err.message : 'Failed to delete field');
+                            } finally {
+                              setCustomFieldBusy(false);
+                            }
+                          }}
+                        >
+                          Delete
+                        </SecondaryButton>
+                      </div>
+                    </li>
+                  ))}
+                {productCustomFields.filter((f) => f.isActive).length === 0 ? (
+                  <li className="text-sm text-textSecondary">No custom product fields yet.</li>
+                ) : null}
+              </ul>
+            </Tile>
+          ) : null}
 
           <Tile>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-textMuted">Invoice</h2>

@@ -7,6 +7,7 @@ import {
   type CreateProductInput,
   type Product,
   type ProductCategory,
+  type ProductCustomField,
   type ProductImportPreview,
   type ProductVariantInput,
   type StockMovement,
@@ -61,7 +62,19 @@ function variantLabel(variant: { size?: string | null; colour?: string | null; p
   return [variant.size, variant.colour].filter(Boolean).join('/') || variant.productCode || 'Variant';
 }
 
-function labelItemsFromProduct(product: Product, businessName: string): LabelItem[] {
+function labelItemsFromProduct(
+  product: Product,
+  businessName: string,
+  customFieldDefs: ProductCustomField[] = [],
+): LabelItem[] {
+  const detailLines = customFieldDefs
+    .filter((def) => def.showOnBarcode && def.isActive)
+    .map((def) => {
+      const value = product.customFields?.[def.key]?.trim();
+      return value ? `${def.label}: ${value}` : '';
+    })
+    .filter(Boolean);
+
   if (product.variants?.length) {
     return product.variants.filter((variant) => variant.barcode).map((variant) => ({
       key: `variant-${variant.id}`,
@@ -73,6 +86,7 @@ function labelItemsFromProduct(product: Product, businessName: string): LabelIte
       barcode: variant.barcode!,
       productCode: variant.productCode,
       defaultQty: Math.max(1, variant.currentStock || 1),
+      customDetailLines: detailLines,
     }));
   }
   return product.barcode
@@ -84,6 +98,7 @@ function labelItemsFromProduct(product: Product, businessName: string): LabelIte
         barcode: product.barcode,
         productCode: product.productCode,
         defaultQty: Math.max(1, product.currentStock || 1),
+        customDetailLines: detailLines,
       }]
     : [];
 }
@@ -104,6 +119,7 @@ export function ProductsListPage() {
   const [labelStyleKey, setLabelStyleKey] = useState('builtin:standard');
   const [allowQtyEdit, setAllowQtyEdit] = useState(false);
   const [businessName, setBusinessName] = useState(APP_DISPLAY_NAME);
+  const [customFieldDefs, setCustomFieldDefs] = useState<ProductCustomField[]>([]);
   const [creditLine, setCreditLine] = useState('');
   const [printerName, setPrinterName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -136,10 +152,11 @@ export function ProductsListPage() {
   }, [categoryId, page, search, stockStatus]);
 
   useEffect(() => {
-    Promise.all([api.listProductCategories(), api.getSettings()])
-      .then(([cats, settings]) => {
+    Promise.all([api.listProductCategories(), api.getSettings(), api.listProductCustomFields()])
+      .then(([cats, settings, fields]) => {
         setCategories(cats);
         setBusinessName(settings.businessName);
+        setCustomFieldDefs(fields);
         setCreditLine(settings.developerCreditLine ?? '');
         setLabelSizeKey(settings.barcodeLabelSize || '58x40');
         setLabelStyleKey(settings.barcodeLabelStyle || 'builtin:standard');
@@ -165,7 +182,7 @@ export function ProductsListPage() {
     void api
       .getProduct(productId)
       .then((product) => {
-        const items = labelItemsFromProduct(product, businessName);
+        const items = labelItemsFromProduct(product, businessName, customFieldDefs);
         if (items.length) {
           setAllowQtyEdit(true);
           setLabelItems(items);
@@ -174,7 +191,7 @@ export function ProductsListPage() {
         void load();
       })
       .catch(() => undefined);
-  }, [location.state, location.pathname, navigate, businessName, load]);
+  }, [location.state, location.pathname, navigate, businessName, customFieldDefs, load]);
 
   async function downloadTemplate() {
     setError('');
@@ -301,10 +318,11 @@ export function ProductsListPage() {
             srNo={(result.page - 1) * result.pageSize + index + 1}
             product={product}
             businessName={businessName}
+            customFieldDefs={customFieldDefs}
             expanded={expanded === product.id}
             onToggle={() => setExpanded((id) => (id === product.id ? null : product.id))}
             onGenerateBarcode={() => {
-              const items = labelItemsFromProduct(product, businessName);
+              const items = labelItemsFromProduct(product, businessName, customFieldDefs);
               if (!items.length) {
                 setError('No barcodes available for this product yet.');
                 return;
@@ -375,6 +393,7 @@ function ProductListRow({
   srNo,
   product,
   businessName,
+  customFieldDefs = [],
   expanded,
   onToggle,
   onGenerateBarcode,
@@ -385,6 +404,7 @@ function ProductListRow({
   srNo: number;
   product: Product;
   businessName: string;
+  customFieldDefs?: ProductCustomField[];
   expanded: boolean;
   onToggle: () => void;
   onGenerateBarcode: () => void;
@@ -392,7 +412,7 @@ function ProductListRow({
   deleteDisabled: boolean;
   onDeleteStart: () => void;
 }) {
-  const targets = labelItemsFromProduct(product, businessName);
+  const targets = labelItemsFromProduct(product, businessName, customFieldDefs);
   const hasVariants = (product.variants?.length ?? 0) > 0;
 
   return (
@@ -684,6 +704,7 @@ export function ProductFormPage({ mode }: { mode: 'add' | 'edit' }) {
   const productId = mode === 'edit' ? Number(params.id) : null;
   const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [businessName, setBusinessName] = useState(APP_DISPLAY_NAME);
+  const [customFieldDefs, setCustomFieldDefs] = useState<ProductCustomField[]>([]);
   const [creditLine, setCreditLine] = useState('');
   const [labelSizeKey, setLabelSizeKey] = useState('58x40');
   const [labelStyleKey, setLabelStyleKey] = useState('builtin:standard');
@@ -697,6 +718,7 @@ export function ProductFormPage({ mode }: { mode: 'add' | 'edit' }) {
   const [lowStockLimit, setLowStockLimit] = useState('');
   const [openingStock, setOpeningStock] = useState('');
   const [notes, setNotes] = useState('');
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
   const [variants, setVariants] = useState<VariantDraft[]>([]);
   const [product, setProduct] = useState<Product | null>(null);
   const [message, setMessage] = useState('');
@@ -707,10 +729,11 @@ export function ProductFormPage({ mode }: { mode: 'add' | 'edit' }) {
   const [historyKey, setHistoryKey] = useState(0);
 
   useEffect(() => {
-    Promise.all([api.listProductCategories(), api.getSettings()])
-      .then(([cats, settings]) => {
+    Promise.all([api.listProductCategories(), api.getSettings(), api.listProductCustomFields()])
+      .then(([cats, settings, fields]) => {
         setCategories(cats);
         setBusinessName(settings.businessName);
+        setCustomFieldDefs(fields);
         setCreditLine(settings.developerCreditLine ?? '');
         setLabelSizeKey(settings.barcodeLabelSize || '58x40');
         setLabelStyleKey(settings.barcodeLabelStyle || 'builtin:standard');
@@ -733,6 +756,7 @@ export function ProductFormPage({ mode }: { mode: 'add' | 'edit' }) {
         setLowStockLimit(p.lowStockLimit != null ? String(p.lowStockLimit) : '');
         setOpeningStock(String(p.currentStock));
         setNotes(p.notes ?? '');
+        setCustomFieldValues(p.customFields ?? {});
         setVariants(
           (p.variants ?? []).map((v) => ({
             key: String(v.id),
@@ -761,8 +785,8 @@ export function ProductFormPage({ mode }: { mode: 'add' | 'edit' }) {
   const remainingStock = totalStock - allocatedStock;
   const stockMisallocated = variants.length > 0 && totalStock > 0 && remainingStock < 0;
   const printableLabels = useMemo(
-    () => (product ? labelItemsFromProduct(product, businessName) : []),
-    [product, businessName],
+    () => (product ? labelItemsFromProduct(product, businessName, customFieldDefs) : []),
+    [product, businessName, customFieldDefs],
   );
 
   async function ensureCategoryId(): Promise<number | null> {
@@ -779,6 +803,12 @@ export function ProductFormPage({ mode }: { mode: 'add' | 'edit' }) {
     setError('');
     setMessage('');
     const hasVariants = variants.some((v) => v.size?.trim() || v.colour?.trim());
+    for (const field of customFieldDefs) {
+      if (field.required && !String(customFieldValues[field.key] ?? '').trim()) {
+        setError(`${field.label} is required.`);
+        return;
+      }
+    }
     if (hasVariants && totalStock > 0 && allocatedStock > totalStock) {
       setError(
         `Variant stock (${allocatedStock}) exceeds Total Stock (${totalStock}). Reduce variant quantities or restore total stock before saving.`,
@@ -825,6 +855,10 @@ export function ProductFormPage({ mode }: { mode: 'add' | 'edit' }) {
         categoryId: resolvedCategoryId,
         salePrice: productSalePrice,
         ...(parsedPurchase !== undefined ? { purchasePrice: parsedPurchase } : {}),
+        brand: brand.trim() || null,
+        lowStockLimit: lowStockLimit.trim() ? Number(lowStockLimit) : null,
+        notes: notes.trim() || null,
+        customFields: customFieldValues,
       };
 
       if (mode === 'add') {
@@ -840,9 +874,6 @@ export function ProductFormPage({ mode }: { mode: 'add' | 'edit' }) {
 
         const created = await api.createProduct({
           ...payload,
-          brand: brand.trim() || null,
-          lowStockLimit: lowStockLimit.trim() ? Number(lowStockLimit) : null,
-          notes: notes.trim() || null,
           variants: variantPayload.length > 0 ? variantPayload : undefined,
           openingStock: totalStock,
         });
@@ -854,9 +885,6 @@ export function ProductFormPage({ mode }: { mode: 'add' | 'edit' }) {
         await api.updateProduct(productId, {
           ...payload,
           ...(parsedPurchase !== undefined ? { purchasePrice: parsedPurchase } : { purchasePrice: 0 }),
-          brand: brand.trim() || null,
-          lowStockLimit: lowStockLimit.trim() ? Number(lowStockLimit) : null,
-          notes: notes.trim() || null,
         });
 
         if (variants.length === 0) {
@@ -905,6 +933,7 @@ export function ProductFormPage({ mode }: { mode: 'add' | 'edit' }) {
         setOpeningStock(String(refreshed.currentStock));
         setSalePrice(String(refreshed.salePrice));
         setPurchasePrice(refreshed.purchasePrice > 0 ? String(refreshed.purchasePrice) : '');
+        setCustomFieldValues(refreshed.customFields ?? {});
         setVariants(
           (refreshed.variants ?? []).map((v) => ({
             key: String(v.id),
@@ -923,7 +952,7 @@ export function ProductFormPage({ mode }: { mode: 'add' | 'edit' }) {
         );
         setHistoryKey((k) => k + 1);
         setMessage('Product updated. Existing barcodes were kept as the sale identity.');
-        const items = labelItemsFromProduct(refreshed, businessName);
+        const items = labelItemsFromProduct(refreshed, businessName, customFieldDefs);
         if (items.length) setLabelItems(items);
       }
     } catch (err) {
@@ -1097,6 +1126,52 @@ export function ProductFormPage({ mode }: { mode: 'add' | 'edit' }) {
               <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
                 Cost not set — profit reports may be inaccurate
               </p>
+            ) : null}
+
+            {customFieldDefs.length > 0 ? (
+              <div className="rounded-lg border border-border p-3">
+                <FieldLabel>Product details</FieldLabel>
+                <p className="mb-3 text-xs text-textMuted">
+                  Extra fields configured in Developer Edit Mode (Settings).
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {customFieldDefs.map((field) => (
+                    <div key={field.key}>
+                      <FieldLabel>
+                        {field.label}
+                        {field.required ? ' *' : ''}
+                      </FieldLabel>
+                      {field.fieldType === 'SELECT' ? (
+                        <select
+                          className={SELECT_CLASS}
+                          value={customFieldValues[field.key] ?? ''}
+                          onChange={(e) =>
+                            setCustomFieldValues((prev) => ({ ...prev, [field.key]: e.target.value }))
+                          }
+                          required={field.required}
+                        >
+                          <option value="">Select…</option>
+                          {field.options.map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <TextInput
+                          type={field.fieldType === 'NUMBER' ? 'number' : 'text'}
+                          value={customFieldValues[field.key] ?? ''}
+                          onChange={(e) =>
+                            setCustomFieldValues((prev) => ({ ...prev, [field.key]: e.target.value }))
+                          }
+                          required={field.required}
+                          placeholder={field.label}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : null}
 
             <div className="rounded-lg border border-border p-3">

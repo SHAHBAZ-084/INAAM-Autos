@@ -38,6 +38,28 @@ export async function ensureRequiredSchemaColumns(): Promise<void> {
   // Safety net for upgrades where migrate has not yet added releaseMarker.
   await addColumnIfMissing('BusinessSettings', 'releaseMarker', `"releaseMarker" TEXT`);
   await addColumnIfMissing('Product', 'needsVariants', `"needsVariants" BOOLEAN NOT NULL DEFAULT 0`);
+  await addColumnIfMissing('Product', 'customFieldsJson', `"customFieldsJson" TEXT NOT NULL DEFAULT '{}'`);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "ProductCustomField" (
+      "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+      "key" TEXT NOT NULL,
+      "label" TEXT NOT NULL,
+      "fieldType" TEXT NOT NULL DEFAULT 'TEXT',
+      "optionsJson" TEXT NOT NULL DEFAULT '[]',
+      "required" BOOLEAN NOT NULL DEFAULT false,
+      "showOnBarcode" BOOLEAN NOT NULL DEFAULT false,
+      "sortOrder" INTEGER NOT NULL DEFAULT 0,
+      "isActive" BOOLEAN NOT NULL DEFAULT true,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await prisma.$executeRawUnsafe(
+    `CREATE UNIQUE INDEX IF NOT EXISTS "ProductCustomField_key_key" ON "ProductCustomField"("key")`,
+  );
+  await prisma.$executeRawUnsafe(
+    `CREATE INDEX IF NOT EXISTS "ProductCustomField_isActive_sortOrder_idx" ON "ProductCustomField"("isActive", "sortOrder")`,
+  );
   await addColumnIfMissing('Invoice', 'amountReceived', `"amountReceived" DECIMAL NOT NULL DEFAULT 0`);
   await addColumnIfMissing('User', 'role', `"role" TEXT DEFAULT 'Owner'`);
   await prisma.$executeRawUnsafe(

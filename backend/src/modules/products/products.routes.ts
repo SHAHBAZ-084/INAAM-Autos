@@ -3,7 +3,9 @@ import multer from 'multer';
 import { z } from 'zod';
 import { requireAuth } from '../../middleware/auth';
 import { asyncHandler, param, validateBody, AppError } from '../../utils/helpers';
+import * as identityAccess from '../settings/identity-access.service';
 import * as productsService from './products.service';
+import * as productCustomFields from './product-custom-fields.service';
 import * as productsImport from './products.import';
 
 export const productsRouter = Router();
@@ -40,9 +42,20 @@ const createProductSchema = z.object({
   variants: z.array(variantSchema).optional(),
   openingStock: z.number().int().min(0).optional(),
   needsVariants: z.boolean().optional(),
+  customFields: z.record(z.string().max(200)).optional(),
 });
 
 const updateProductSchema = createProductSchema.partial().omit({ variants: true });
+
+const customFieldSchema = z.object({
+  label: z.string().min(1).max(80),
+  fieldType: z.enum(['TEXT', 'NUMBER', 'SELECT']).optional(),
+  options: z.array(z.string().min(1).max(80)).max(50).optional(),
+  required: z.boolean().optional(),
+  showOnBarcode: z.boolean().optional(),
+  sortOrder: z.number().int().optional(),
+  isActive: z.boolean().optional(),
+});
 
 const stockAdjustSchema = z.object({
   variantId: z.number().int().optional(),
@@ -111,6 +124,57 @@ productsRouter.delete(
     if (!Number.isInteger(id) || id < 1) throw new AppError(400, 'Invalid category id');
     const category = await productsService.deleteProductCategory(id);
     res.json(category);
+  }),
+);
+
+productsRouter.get(
+  '/custom-fields',
+  asyncHandler(async (req, res) => {
+    const includeInactive = String(req.query.includeInactive ?? '') === 'true';
+    const fields = await productCustomFields.listProductCustomFields({ includeInactive });
+    res.json(fields);
+  }),
+);
+
+productsRouter.post(
+  '/custom-fields',
+  validateBody(customFieldSchema),
+  asyncHandler(async (req, res) => {
+    if (!identityAccess.isIdentityEditActive(req.session)) {
+      throw new AppError(403, 'Developer Edit Mode is required to manage product detail fields');
+    }
+    identityAccess.touchIdentityEditSession(req.session);
+    const field = await productCustomFields.createProductCustomField(req.body);
+    res.status(201).json(field);
+  }),
+);
+
+productsRouter.patch(
+  '/custom-fields/:id',
+  validateBody(customFieldSchema),
+  asyncHandler(async (req, res) => {
+    if (!identityAccess.isIdentityEditActive(req.session)) {
+      throw new AppError(403, 'Developer Edit Mode is required to manage product detail fields');
+    }
+    identityAccess.touchIdentityEditSession(req.session);
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) throw new AppError(400, 'Invalid field id');
+    const field = await productCustomFields.updateProductCustomField(id, req.body);
+    res.json(field);
+  }),
+);
+
+productsRouter.delete(
+  '/custom-fields/:id',
+  asyncHandler(async (req, res) => {
+    if (!identityAccess.isIdentityEditActive(req.session)) {
+      throw new AppError(403, 'Developer Edit Mode is required to manage product detail fields');
+    }
+    identityAccess.touchIdentityEditSession(req.session);
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) throw new AppError(400, 'Invalid field id');
+    const field = await productCustomFields.deleteProductCustomField(id);
+    res.json(field);
   }),
 );
 

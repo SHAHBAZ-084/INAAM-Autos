@@ -52,6 +52,8 @@ export type LabelItem = {
   showBarcode?: boolean;
   /** Extra lines from developer barcode settings. */
   customLines?: string[];
+  /** Product custom detail fields marked showOnBarcode (e.g. Model: CG125). */
+  customDetailLines?: string[];
 };
 
 /** Whole-label layout presets (encoding stays CODE128 with the exact DB barcode). */
@@ -167,6 +169,11 @@ function LabelCard({
           {line}
         </p>
       ))}
+      {(item.customDetailLines ?? []).map((line) => (
+        <p key={`detail-${line}`} className={`font-semibold text-black ${compact ? 'text-[8px]' : 'text-[10px]'}`}>
+          {line}
+        </p>
+      ))}
       {showName ? (
         <p className={`font-semibold leading-snug ${showShop ? 'mt-0.5' : ''} ${compact ? 'text-[11px]' : 'text-xs'}`}>
           {item.productName}
@@ -206,6 +213,7 @@ function labelInnerHtml(
       ${logo}
       ${showShop ? `<p class="shop">${escapeHtml(item.businessName)}</p>` : ''}
       ${(item.customLines ?? []).map((line) => `<p class="custom">${escapeHtml(line)}</p>`).join('')}
+      ${(item.customDetailLines ?? []).map((line) => `<p class="custom">${escapeHtml(line)}</p>`).join('')}
       ${showName ? `<p class="name">${escapeHtml(item.productName)}</p>` : ''}
       ${showVariant && variantLine ? `<p class="variant">${escapeHtml(variantLine)}</p>` : ''}
       ${showPrice ? `<p class="price">Rs ${Math.round(item.price)}</p>` : ''}
@@ -496,7 +504,7 @@ export function buildFreeformStickerHtml(
       colour: item.colour,
       price: item.price,
       barcode: item.barcode,
-      customLines: item.customLines,
+      customLines: [...(item.customLines ?? []), ...(item.customDetailLines ?? [])],
       logoSrc: item.logoSrc,
       showLogo: item.showLogo,
     })),
