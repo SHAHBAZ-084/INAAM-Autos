@@ -49,19 +49,19 @@ export function buildCustomerStatementHtml(
 
   return `<!DOCTYPE html><html><head><title>Statement — ${escapeHtml(customer.name)}</title>
 <style>
-  ${printHeaderCss()}
+  ${printHeaderCss(settings.secondaryColor || '#C8102E')}
   @page { size: A4; margin: 12mm; }
-  body { font-family: Arial, sans-serif; color: #000; font-weight: 700; margin: 0; }
+  body { font-family: Arial, sans-serif; color: #111; font-weight: 600; margin: 0; }
   .sheet { max-width: 180mm; margin: 0 auto; }
-  h1 { font-size: 20pt; font-weight: 800; margin: 0 0 4px; color: #000; }
-  .meta { font-size: 11pt; font-weight: 700; color: #000; margin: 2px 0; }
+  h1 { font-size: 20pt; font-weight: 800; margin: 0 0 4px; color: #111; }
+  .meta { font-size: 11pt; font-weight: 600; color: #333; margin: 2px 0; }
   .logo { display: block; max-height: 75px; max-width: 80%; margin-bottom: 8px; background: #ffffff; object-fit: contain; }
-  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 11pt; font-weight: 700; }
-  th, td { border-bottom: 1px solid #000; padding: 6px 4px; text-align: left; color: #000; }
-  th { font-weight: 800; background: #f0f0f0; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 11pt; font-weight: 600; }
+  th, td { border-bottom: 1px solid #e5e5e5; padding: 8px 6px; text-align: left; color: #111; }
+  th { font-weight: 700; background: ${settings.secondaryColor || '#C8102E'}; color: #fff; border-bottom: none; }
   .num { text-align: right; white-space: nowrap; font-weight: 700; }
-  .closing { display: flex; justify-content: space-between; font-size: 14pt; font-weight: 800; margin-top: 12px; padding-top: 8px; border-top: 2px solid #000; color: #000; }
-  .footer { font-size: 11pt; font-weight: 700; color: #000; margin-top: 24px; text-align: center; }
+  .closing { display: flex; justify-content: space-between; font-size: 14pt; font-weight: 800; margin-top: 12px; padding-top: 8px; border-top: 2px solid ${settings.secondaryColor || '#C8102E'}; color: #111; }
+  .footer { font-size: 11pt; font-weight: 600; color: #555; margin-top: 24px; text-align: center; }
 </style></head><body>
 <div class="sheet">
   ${headerHtml}

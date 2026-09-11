@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { printInvoice, buildTestInvoice } from '../../components/sales/InvoicePrint';
 import { useFormShortcuts } from '../../hooks/useFormShortcuts';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import {
   api,
   type BarcodeLookupResult,
@@ -28,8 +29,11 @@ import {
   SecondaryButton,
   TextInput,
 } from '../../components/ui/PageShell';
+import { HubCloseButton } from '../../components/ui/HubCloseButton';
 import { PaymentMethodFields, toApiPaymentMethod, type SimplePayKind } from '../../components/ui/PaymentMethodFields';
 import { BarcodeScanField } from '../products/BarcodeScanPage';
+
+const SELECT_CLASS = 'w-full rounded-lg border border-border bg-surface2 px-3 py-2 text-sm';
 
 type CartLine = {
   key: string;
@@ -46,8 +50,6 @@ type CartLine = {
   discountPercent: number;
   stock: number;
 };
-
-const SELECT_CLASS = 'w-full rounded-lg border border-border bg-surface2 px-3 py-2 text-sm';
 
 function lineKey(productId: number, variantId: number | null) {
   return `${productId}:${variantId ?? 'p'}`;
@@ -390,6 +392,7 @@ export function NewSalePage() {
       subtitle="Scan or search items, complete checkout, print invoice"
       actions={
         <div className="flex flex-wrap gap-2">
+          <HubCloseButton to="/sales" />
           <Link to="/sales/list">
             <SecondaryButton type="button">Recent invoices</SecondaryButton>
           </Link>
@@ -874,26 +877,99 @@ export function InvoicesListPage() {
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [listError, setListError] = useState('');
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('');
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, fromDate, toDate, paymentMethod]);
 
   useEffect(() => {
     setLoading(true);
+    setListError('');
     api
-      .listInvoices({ page, pageSize: 20 })
+      .listInvoices({
+        page,
+        pageSize: 20,
+        search: debouncedSearch || undefined,
+        fromDate: fromDate || undefined,
+        toDate: toDate || undefined,
+        paymentMethod: paymentMethod || undefined,
+      })
       .then(setResult)
-      .catch(() => setResult(null))
+      .catch((err) => {
+        setResult(null);
+        setListError(err instanceof Error ? err.message : 'Failed to load invoices');
+      })
       .finally(() => setLoading(false));
-  }, [page]);
+  }, [page, debouncedSearch, fromDate, toDate, paymentMethod]);
 
   return (
     <PageShell
       title="Recent invoices"
       subtitle="View and reprint past sales"
       actions={
-        <Link to="/sales/new">
-          <PrimaryButton type="button">New Sale</PrimaryButton>
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <HubCloseButton to="/sales" />
+          <Link to="/sales/new">
+            <PrimaryButton type="button">New Sale</PrimaryButton>
+          </Link>
+        </div>
       }
     >
+      <Panel className="mb-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[180px] flex-1">
+            <FieldLabel>Search</FieldLabel>
+            <TextInput
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Invoice #, customer, phone…"
+            />
+          </div>
+          <div>
+            <FieldLabel>From</FieldLabel>
+            <TextInput type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          </div>
+          <div>
+            <FieldLabel>To</FieldLabel>
+            <TextInput type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+          </div>
+          <div>
+            <FieldLabel>Type</FieldLabel>
+            <select
+              className={SELECT_CLASS}
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value)}
+            >
+              <option value="">All payments</option>
+              <option value="CASH">Cash</option>
+              <option value="CARD">Card</option>
+              <option value="EASYPAISA">Easypaisa</option>
+              <option value="JAZZCASH">JazzCash</option>
+              <option value="BANK_TRANSFER">Bank transfer</option>
+              <option value="E_PAYMENT">All e-payments</option>
+              <option value="UDHAAR">Udhaar</option>
+            </select>
+          </div>
+          {(search || fromDate || toDate || paymentMethod) && (
+            <SecondaryButton
+              type="button"
+              onClick={() => {
+                setSearch('');
+                setFromDate('');
+                setToDate('');
+                setPaymentMethod('');
+              }}
+            >
+              Clear filters
+            </SecondaryButton>
+          )}
+        </div>
+      </Panel>
       <Panel>
         {listError ? (
           <Feedback variant="error" className="mb-3">
@@ -907,6 +983,7 @@ export function InvoicesListPage() {
                 <th className="px-2 py-2">Invoice</th>
                 <th className="px-2 py-2">Date</th>
                 <th className="px-2 py-2">Customer</th>
+                <th className="px-2 py-2">Type</th>
                 <th className="px-2 py-2 text-right">Sold</th>
                 <th className="px-2 py-2 text-right">Returned</th>
                 <th className="px-2 py-2 text-right">Net</th>
@@ -924,6 +1001,7 @@ export function InvoicesListPage() {
                   </td>
                   <td className="px-2 py-2">{formatDate(inv.date)}</td>
                   <td className="px-2 py-2">{inv.customer?.name ?? 'Walk-in'}</td>
+                  <td className="px-2 py-2">{inv.paymentMethod}</td>
                   <td className="px-2 py-2 text-right">{formatMoney(inv.totalAmount)}</td>
                   <td className="px-2 py-2 text-right">
                     {(inv.returnedAmount ?? 0) > 0 ? formatMoney(inv.returnedAmount ?? 0) : '—'}
@@ -974,8 +1052,15 @@ export function InvoicesListPage() {
               ))}
               {!loading && result?.items.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-2 py-8 text-center text-textSecondary">
-                    No invoices yet.
+                  <td colSpan={9} className="px-2 py-8 text-center text-textSecondary">
+                    No invoices match these filters.
+                  </td>
+                </tr>
+              ) : null}
+              {loading && !result ? (
+                <tr>
+                  <td colSpan={9} className="px-2 py-8 text-center text-textSecondary">
+                    Loading…
                   </td>
                 </tr>
               ) : null}
@@ -1096,9 +1181,7 @@ export function InvoiceDetailPage() {
       subtitle={`${formatDateTime(invoice.date)} · ${invoiceActivityLabel(invoice)}`}
       actions={
         <div className="flex flex-wrap gap-2">
-          <Link to="/sales/list">
-            <SecondaryButton type="button">Back</SecondaryButton>
-          </Link>
+          <HubCloseButton to="/sales/list" label="Close" />
           {settings ? (
             <>
               <PrimaryButton type="button" disabled={printing} onClick={() => void runPrint(invoice)}>

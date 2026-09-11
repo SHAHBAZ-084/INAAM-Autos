@@ -49,6 +49,8 @@ type StockAlertRow = {
   currentStock: number;
   lowStockLimit: number;
   variantLabel: string | null;
+  qtyToRestock?: number;
+  estimatedPurchaseValue?: number;
 };
 
 function variantLabelOf(v: { size: string | null; colour: string | null }): string | null {
@@ -84,9 +86,17 @@ async function loadProductsForStockAlerts(search?: string) {
       barcode: true,
       currentStock: true,
       lowStockLimit: true,
+      purchasePrice: true,
       category: { select: { name: true } },
       variants: {
-        select: { size: true, colour: true, currentStock: true, sku: true, barcode: true },
+        select: {
+          size: true,
+          colour: true,
+          currentStock: true,
+          sku: true,
+          barcode: true,
+          purchasePrice: true,
+        },
       },
     },
   });
@@ -148,6 +158,110 @@ export async function reportDailySales(params: {
   return paginated(rows, page, pageSize);
 }
 
+/** Product-wise sales by calendar day — for the main Sales report. */
+export async function reportDailySalesDetail(params: {
+  fromDate?: string;
+  toDate?: string;
+  preset?: DateRangePreset;
+}) {
+  const preset = params.preset ?? (params.fromDate && params.toDate ? 'custom' : 'today');
+  const range = resolveDateRange(preset, params.fromDate, params.toDate);
+  const dateCond = dateFilter(range.from, range.to);
+
+  const [invoices, financial, collection] = await Promise.all([
+    prisma.invoice.findMany({
+      where: {
+        status: InvoiceStatus.ACTIVE,
+        ...(dateCond ? { date: dateCond } : {}),
+      },
+      select: {
+        date: true,
+        paymentMethod: true,
+        totalAmount: true,
+        paidAmount: true,
+        discount: true,
+        items: {
+          select: {
+            quantity: true,
+            rate: true,
+            discount: true,
+            total: true,
+            costAtSale: true,
+            product: { select: { name: true } },
+            variant: { select: { size: true, colour: true } },
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    }),
+    getFinancialSummary(preset, params.fromDate, params.toDate),
+    (async () => {
+      const { getSalesCollectionBreakdown } = await import('./financial-summary.service');
+      return getSalesCollectionBreakdown(range.from, range.to);
+    })(),
+  ]);
+
+  type ProductAgg = {
+    name: string;
+    quantity: number;
+    discount: number;
+    amount: number;
+  };
+
+  const byDay = new Map<string, Map<string, ProductAgg>>();
+  for (const inv of invoices) {
+    const day = localDateKey(inv.date);
+    let products = byDay.get(day);
+    if (!products) {
+      products = new Map();
+      byDay.set(day, products);
+    }
+    for (const item of inv.items) {
+      const variant = [item.variant?.size, item.variant?.colour].filter(Boolean).join('/');
+      const name = item.product.name + (variant ? ` (${variant})` : '');
+      const cur = products.get(name) ?? { name, quantity: 0, discount: 0, amount: 0 };
+      cur.quantity += item.quantity;
+      cur.discount = roundMoney(cur.discount + toNumber(item.discount));
+      cur.amount = roundMoney(cur.amount + toNumber(item.total));
+      products.set(name, cur);
+    }
+  }
+
+  const items: Array<{
+    date: string;
+    productName: string;
+    quantity: number;
+    discount: number;
+    amount: number;
+  }> = [];
+
+  for (const date of [...byDay.keys()].sort((a, b) => b.localeCompare(a))) {
+    const products = [...(byDay.get(date)?.values() ?? [])].sort((a, b) => a.name.localeCompare(b.name));
+    for (const p of products) {
+      items.push({
+        date,
+        productName: p.name,
+        quantity: p.quantity,
+        discount: p.discount,
+        amount: p.amount,
+      });
+    }
+  }
+
+  return {
+    range,
+    items,
+    summary: {
+      fullSale: financial.netSales,
+      cash: collection.cash,
+      ePayment: collection.ePayment,
+      profit: financial.grossProfit,
+      discount: financial.discounts,
+      udhaar: collection.udhaar,
+    },
+  };
+}
+
 export async function reportSalesDateRange(params: {
   preset?: DateRangePreset;
   fromDate?: string;
@@ -189,6 +303,16 @@ export async function reportSalesDateRange(params: {
         remainingAmount: true,
         paymentMethod: true,
         customer: { select: { name: true } },
+        items: {
+          select: {
+            quantity: true,
+            rate: true,
+            total: true,
+            discount: true,
+            product: { select: { name: true } },
+            variant: { select: { size: true, colour: true } },
+          },
+        },
       },
     }),
   ]);
@@ -203,6 +327,24 @@ export async function reportSalesDateRange(params: {
       paidAmount: toNumber(r.paidAmount),
       remainingAmount: toNumber(r.remainingAmount),
       paymentMethod: r.paymentMethod,
+      lineItems: r.items.map((item) => {
+        const variant = [item.variant?.size, item.variant?.colour].filter(Boolean).join('/');
+        const name = item.product.name + (variant ? ` (${variant})` : '');
+        return {
+          name,
+          quantity: item.quantity,
+          rate: toNumber(item.rate),
+          discount: toNumber(item.discount),
+          total: toNumber(item.total),
+        };
+      }),
+      itemsSummary: r.items
+        .map((item) => {
+          const variant = [item.variant?.size, item.variant?.colour].filter(Boolean).join('/');
+          const name = item.product.name + (variant ? `/${variant}` : '');
+          return `${name} ×${item.quantity}`;
+        })
+        .join('; '),
     })),
     total,
     page,
@@ -487,7 +629,7 @@ export async function reportCurrentStock(params: {
     ];
   }
 
-  const [total, items] = await Promise.all([
+  const [total, items, allForTotals] = await Promise.all([
     prisma.product.count({ where }),
     prisma.product.findMany({
       where,
@@ -505,7 +647,20 @@ export async function reportCurrentStock(params: {
         category: { select: { name: true } },
       },
     }),
+    prisma.product.findMany({
+      where,
+      select: { currentStock: true, purchasePrice: true, salePrice: true },
+    }),
   ]);
+
+  let totalCostValue = 0;
+  let totalSellingValue = 0;
+  let fullStockUnits = 0;
+  for (const p of allForTotals) {
+    totalCostValue = roundMoney(totalCostValue + multiplyMoney(toNumber(p.purchasePrice), p.currentStock));
+    totalSellingValue = roundMoney(totalSellingValue + multiplyMoney(toNumber(p.salePrice), p.currentStock));
+    fullStockUnits += p.currentStock;
+  }
 
   return {
     items: items.map((p) => ({
@@ -522,6 +677,12 @@ export async function reportCurrentStock(params: {
     page,
     pageSize,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    summary: {
+      productCount: total,
+      fullStockCount: fullStockUnits,
+      totalCostValue,
+      totalSellingValue,
+    },
   };
 }
 
@@ -536,6 +697,8 @@ export async function reportLowStock(params: { page?: number; pageSize?: number;
       for (const v of p.variants) {
         // Match dashboard: anything at or below limit (includes out of stock).
         if (v.currentStock > limit) continue;
+        const qtyToRestock = Math.max(0, limit - v.currentStock);
+        const unitCost = toNumber(v.purchasePrice ?? p.purchasePrice);
         rows.push({
           id: p.id,
           name: p.name,
@@ -545,9 +708,13 @@ export async function reportLowStock(params: { page?: number; pageSize?: number;
           currentStock: v.currentStock,
           lowStockLimit: limit,
           variantLabel: variantLabelOf(v),
+          qtyToRestock,
+          estimatedPurchaseValue: multiplyMoney(unitCost, qtyToRestock),
         });
       }
     } else if (p.currentStock <= limit) {
+      const qtyToRestock = Math.max(0, limit - p.currentStock);
+      const unitCost = toNumber(p.purchasePrice);
       rows.push({
         id: p.id,
         name: p.name,
@@ -557,6 +724,8 @@ export async function reportLowStock(params: { page?: number; pageSize?: number;
         currentStock: p.currentStock,
         lowStockLimit: limit,
         variantLabel: null,
+        qtyToRestock,
+        estimatedPurchaseValue: multiplyMoney(unitCost, qtyToRestock),
       });
     }
   }
@@ -564,9 +733,17 @@ export async function reportLowStock(params: { page?: number; pageSize?: number;
   rows.sort((a, b) => a.currentStock - b.currentStock || a.name.localeCompare(b.name));
   const { page, pageSize } = paginateParams(params.page, params.pageSize);
   const result = paginated(rows, page, pageSize);
+  const estimatedPurchaseValue = roundMoney(
+    rows.reduce((s, r) => s + (r.estimatedPurchaseValue ?? 0), 0),
+  );
   return {
     ...result,
     lowStockLimit: threshold,
+    summary: {
+      lowStockCount: rows.length,
+      estimatedPurchaseValue,
+      restockLimit: threshold,
+    },
     emptyMessage:
       rows.length === 0
         ? `Nothing is low stock. No products or variants are at or below your limit of ${threshold}.`
@@ -774,7 +951,7 @@ export async function reportPurchases(params: {
     ];
   }
 
-  const [total, items] = await Promise.all([
+  const [total, items, periodAgg] = await Promise.all([
     prisma.purchase.count({ where }),
     prisma.purchase.findMany({
       where,
@@ -789,13 +966,32 @@ export async function reportPurchases(params: {
         remainingAmount: true,
         paymentMethod: true,
         supplier: { select: { name: true } },
+        items: {
+          select: {
+            quantity: true,
+            purchasePrice: true,
+            discount: true,
+            lineTotal: true,
+            product: { select: { name: true, sku: true } },
+            variant: { select: { size: true, colour: true } },
+          },
+        },
       },
+    }),
+    prisma.purchase.aggregate({
+      where,
+      _sum: { totalAmount: true, paidAmount: true, remainingAmount: true },
     }),
   ]);
 
   return {
     period,
     periodTotal: totals[period],
+    summary: {
+      totalAmount: toNumber(periodAgg._sum.totalAmount ?? 0),
+      paidAmount: toNumber(periodAgg._sum.paidAmount ?? 0),
+      remainingAmount: toNumber(periodAgg._sum.remainingAmount ?? 0),
+    },
     items: items.map((p) => ({
       id: p.id,
       date: p.date.toISOString(),
@@ -804,6 +1000,25 @@ export async function reportPurchases(params: {
       paidAmount: toNumber(p.paidAmount),
       remainingAmount: toNumber(p.remainingAmount),
       paymentMethod: p.paymentMethod,
+      lineItems: p.items.map((item) => {
+        const variant = [item.variant?.size, item.variant?.colour].filter(Boolean).join('/');
+        const name = item.product.name + (variant ? ` (${variant})` : '');
+        return {
+          name,
+          sku: item.product.sku,
+          quantity: item.quantity,
+          purchasePrice: toNumber(item.purchasePrice),
+          discount: toNumber(item.discount),
+          lineTotal: toNumber(item.lineTotal),
+        };
+      }),
+      itemsSummary: p.items
+        .map((item) => {
+          const variant = [item.variant?.size, item.variant?.colour].filter(Boolean).join('/');
+          const name = item.product.name + (variant ? `/${variant}` : '');
+          return `${name} ×${item.quantity} @ ${toNumber(item.purchasePrice)}`;
+        })
+        .join('; '),
     })),
     total,
     page,

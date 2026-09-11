@@ -64,6 +64,22 @@ reportsRouter.get(
 );
 
 reportsRouter.get(
+  '/sales/daily-detail',
+  asyncHandler(async (req, res) => {
+    const raw = typeof req.query.preset === 'string' ? req.query.preset : undefined;
+    const valid: DateRangePreset[] = ['today', 'week', 'month', 'year', 'custom', 'lifetime'];
+    const preset = raw && valid.includes(raw as DateRangePreset) ? (raw as DateRangePreset) : 'today';
+    res.json(
+      await reports.reportDailySalesDetail({
+        preset,
+        fromDate: req.query.fromDate as string | undefined,
+        toDate: req.query.toDate as string | undefined,
+      }),
+    );
+  }),
+);
+
+reportsRouter.get(
   '/sales/range',
   asyncHandler(async (req, res) => {
     res.json(

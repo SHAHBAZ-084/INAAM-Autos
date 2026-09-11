@@ -10,6 +10,9 @@ export type ReportExportMeta = {
   logoSrc?: string | null;
   dateRange?: string;
   generatedAt?: string;
+  /** Brand accent RGB for PDF table headers (default INAAM red). */
+  accentRgb?: [number, number, number];
+  summaryStats?: Array<{ label: string; value: string }>;
 };
 
 function wrapBusinessName(name: string, maxPerLine = 28): string[] {
@@ -160,31 +163,47 @@ export function downloadPdf(
     });
   }
 
-  startY = Math.max(8 + nameLines.length * 5.5, rightY, 26) + 4;
+  startY = Math.max(8 + nameLines.length * 5.5, rightY, 26) + 2;
+  const accent = meta?.accentRgb ?? ([200, 16, 46] as [number, number, number]);
+  doc.setDrawColor(accent[0], accent[1], accent[2]);
+  doc.setLineWidth(0.6);
+  doc.line(leftX, startY, rightX, startY);
+  startY += 8;
 
-  doc.setFontSize(11);
+  doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text(title, centerX, startY, { align: 'center' });
+  doc.setTextColor(17, 17, 17);
+  doc.text(title, rightX, startY, { align: 'right' });
   startY += 5;
 
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(90, 90, 90);
+  doc.setTextColor(85, 85, 85);
   if (meta?.dateRange?.trim()) {
-    doc.text(`Period: ${meta.dateRange.trim()}`, centerX, startY, { align: 'center' });
+    doc.text(meta.dateRange.trim(), rightX, startY, { align: 'right' });
     startY += 4;
   }
-  doc.text(`Generated: ${meta?.generatedAt ?? new Date().toLocaleString()}`, centerX, startY, { align: 'center' });
+  doc.text(`Generated: ${meta?.generatedAt ?? new Date().toLocaleString()}`, rightX, startY, { align: 'right' });
   startY += 6;
   doc.setTextColor(0, 0, 0);
+
+  if (meta?.summaryStats?.length) {
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    for (const stat of meta.summaryStats) {
+      doc.text(`${stat.label}: ${stat.value}`, leftX, startY);
+      startY += 4.5;
+    }
+    startY += 3;
+  }
 
   autoTable(doc, {
     head: [headers],
     body: rows.map((row) => row.map((cell, idx) => formatCell(headers[idx] ?? '', cell))),
     startY,
-    styles: { fontSize: 8, cellPadding: 2.5, overflow: 'linebreak' },
-    headStyles: { fillColor: [17, 17, 17], textColor: [255, 255, 255], fontStyle: 'bold' },
-    alternateRowStyles: { fillColor: [247, 247, 247] },
+    styles: { fontSize: 8, cellPadding: 2.5, overflow: 'linebreak', lineColor: [220, 220, 220], lineWidth: 0.2 },
+    headStyles: { fillColor: accent, textColor: [255, 255, 255], fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [250, 250, 250] },
     columnStyles: Object.fromEntries(
       headers.map((header, idx) => [
         idx,

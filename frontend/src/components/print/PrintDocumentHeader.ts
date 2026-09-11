@@ -19,6 +19,8 @@ export type PrintHeaderInput = {
   title: string;
   generatedAt?: string;
   dateRange?: string;
+  /** Brand accent for statement-style reports (default INAAM red). */
+  accentColor?: string;
 };
 
 function escapeHtml(text: string): string {
@@ -29,16 +31,17 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;');
 }
 
-export function printHeaderCss(): string {
+export function printHeaderCss(accent = '#C8102E'): string {
   return `
+  .print-doc-wrap { color: #1a1a1a; }
   .print-doc-header {
     display: table;
     width: 100%;
     table-layout: fixed;
     border-collapse: collapse;
-    margin: 0 0 4mm;
+    margin: 0 0 3mm;
     padding: 0 0 3mm;
-    border-bottom: 1px solid #222;
+    border-bottom: 2px solid ${accent};
   }
   .print-hdr-row { display: table-row; }
   .print-hdr-left,
@@ -48,21 +51,15 @@ export function printHeaderCss(): string {
     vertical-align: middle;
     padding: 0 2mm;
   }
-  .print-hdr-left {
-    width: 22%;
-    text-align: left;
-  }
-  .print-hdr-center {
-    width: 46%;
-    text-align: center;
-  }
+  .print-hdr-left { width: 22%; text-align: left; }
+  .print-hdr-center { width: 46%; text-align: center; }
   .print-hdr-right {
     width: 32%;
     text-align: right;
     font-size: 9.5px;
-    font-weight: 700;
+    font-weight: 600;
     line-height: 1.35;
-    color: #111;
+    color: #333;
     overflow-wrap: anywhere;
     word-break: break-word;
   }
@@ -70,7 +67,7 @@ export function printHeaderCss(): string {
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    min-height: 18mm;
+    min-height: 16mm;
     max-height: 20mm;
   }
   .print-hdr-logo {
@@ -87,10 +84,10 @@ export function printHeaderCss(): string {
     display: block;
     text-align: center;
     font-weight: 800;
-    font-size: 14px;
+    font-size: 15px;
     letter-spacing: 0.01em;
     line-height: 1.2;
-    color: #000;
+    color: #111;
     overflow-wrap: anywhere;
     word-break: break-word;
     white-space: normal;
@@ -100,24 +97,49 @@ export function printHeaderCss(): string {
   }
   .print-hdr-right-line { margin: 0 0 1.5px; }
   .print-doc-meta {
-    text-align: center;
-    margin: 3mm 0 5mm;
-    padding-top: 1mm;
+    text-align: right;
+    margin: 0 0 4mm;
     color: #111;
   }
   .print-doc-title {
-    font-size: 12.5px;
+    font-size: 16px;
     font-weight: 800;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    margin: 0 0 3px;
+    letter-spacing: 0.02em;
+    margin: 0 0 2px;
+    color: #111;
   }
   .print-doc-meta-line {
-    font-size: 9.5px;
+    font-size: 10px;
     font-weight: 600;
     margin: 1px 0;
+    color: #555;
+  }
+  .print-summary-row {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 3mm 0;
+    margin: 0 0 5mm;
+  }
+  .print-summary-box {
+    display: table-cell;
+    vertical-align: top;
+    background: #f3f3f3;
+    border-radius: 4px;
+    padding: 3mm 3.5mm;
+    font-size: 10px;
+    font-weight: 600;
     color: #333;
   }
+  .print-summary-box strong {
+    display: block;
+    font-size: 12px;
+    font-weight: 800;
+    color: #111;
+    margin-top: 2px;
+  }
+  .print-table-accent th { background: ${accent} !important; color: #fff !important; }
   `;
 }
 
@@ -163,7 +185,7 @@ export function buildPrintDocumentHeaderHtml(input: PrintHeaderInput): string {
   </header>
   <div class="print-doc-meta">
     <div class="print-doc-title">${escapeHtml(input.title)}</div>
-    ${input.dateRange ? `<div class="print-doc-meta-line">Period: ${escapeHtml(input.dateRange)}</div>` : ''}
+    ${input.dateRange ? `<div class="print-doc-meta-line">${escapeHtml(input.dateRange)}</div>` : ''}
     <div class="print-doc-meta-line">Generated: ${escapeHtml(generated)}</div>
   </div>`;
 }
@@ -171,7 +193,16 @@ export function buildPrintDocumentHeaderHtml(input: PrintHeaderInput): string {
 export function printHeaderFromSettings(
   settings: Pick<
     BusinessSettings,
-    'businessName' | 'address' | 'phone' | 'phoneLabel' | 'whatsapp' | 'whatsappLabel' | 'tagline' | 'logoUrl' | 'developerConfig'
+    | 'businessName'
+    | 'address'
+    | 'phone'
+    | 'phoneLabel'
+    | 'whatsapp'
+    | 'whatsappLabel'
+    | 'tagline'
+    | 'logoUrl'
+    | 'developerConfig'
+    | 'secondaryColor'
   >,
   opts: {
     title: string;
@@ -199,5 +230,6 @@ export function printHeaderFromSettings(
     title: opts.title,
     generatedAt: opts.generatedAt,
     dateRange: opts.dateRange,
+    accentColor: settings.secondaryColor || '#C8102E',
   };
 }

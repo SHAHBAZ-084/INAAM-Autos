@@ -520,6 +520,25 @@ export const api = {
   deleteProductCategory(id: number) {
     return request<ProductCategory>(`/api/products/categories/${id}`, { method: 'DELETE' });
   },
+  listProductCustomFields(includeInactive = false) {
+    const q = includeInactive ? '?includeInactive=true' : '';
+    return request<ProductCustomField[]>(`/api/products/custom-fields${q}`);
+  },
+  createProductCustomField(data: ProductCustomFieldInput) {
+    return request<ProductCustomField>('/api/products/custom-fields', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+  updateProductCustomField(id: number, data: ProductCustomFieldInput) {
+    return request<ProductCustomField>(`/api/products/custom-fields/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+  deleteProductCustomField(id: number) {
+    return request<ProductCustomField>(`/api/products/custom-fields/${id}`, { method: 'DELETE' });
+  },
   listProducts(params?: {
     page?: number;
     pageSize?: number;
@@ -748,11 +767,23 @@ export const api = {
     return request<CustomerStatement>(`/api/customers/${id}/statement`);
   },
 
-  listInvoices(params?: { page?: number; pageSize?: number; status?: 'ACTIVE' | 'CANCELLED' }) {
+  listInvoices(params?: {
+    page?: number;
+    pageSize?: number;
+    status?: 'ACTIVE' | 'CANCELLED';
+    search?: string;
+    fromDate?: string;
+    toDate?: string;
+    paymentMethod?: string;
+  }) {
     const query = new URLSearchParams();
     if (params?.page != null) query.set('page', String(params.page));
     if (params?.pageSize != null) query.set('pageSize', String(params.pageSize));
     if (params?.status) query.set('status', params.status);
+    if (params?.search?.trim()) query.set('search', params.search.trim());
+    if (params?.fromDate) query.set('fromDate', params.fromDate);
+    if (params?.toDate) query.set('toDate', params.toDate);
+    if (params?.paymentMethod) query.set('paymentMethod', params.paymentMethod);
     const suffix = query.toString() ? `?${query}` : '';
     return request<InvoiceListResult>(`/api/sales${suffix}`);
   },
@@ -982,6 +1013,7 @@ export type Product = {
   supplierId: number | null;
   imagePath: string | null;
   notes: string | null;
+  customFields?: Record<string, string>;
   isActive: boolean;
   category?: ProductCategory | null;
   variants?: ProductVariant[];
@@ -1015,9 +1047,34 @@ export type CreateProductInput = {
   supplierId?: number | null;
   imagePath?: string | null;
   notes?: string | null;
+  customFields?: Record<string, string>;
   variants?: ProductVariantInput[];
   openingStock?: number;
   needsVariants?: boolean;
+};
+
+export type ProductCustomField = {
+  id: number;
+  key: string;
+  label: string;
+  fieldType: 'TEXT' | 'NUMBER' | 'SELECT';
+  options: string[];
+  required: boolean;
+  showOnBarcode: boolean;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProductCustomFieldInput = {
+  label: string;
+  fieldType?: 'TEXT' | 'NUMBER' | 'SELECT';
+  options?: string[];
+  required?: boolean;
+  showOnBarcode?: boolean;
+  sortOrder?: number;
+  isActive?: boolean;
 };
 
 export type StockMovement = {

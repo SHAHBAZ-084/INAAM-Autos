@@ -1,0 +1,21 @@
+import { Link } from 'react-router-dom';
+import { X } from 'lucide-react';
+import { SecondaryButton } from './PageShell';
+
+/** Close / back to the parent hub (or previous section). */
+export function HubCloseButton({
+  to,
+  label = 'Close',
+}: {
+  to: string;
+  label?: string;
+}) {
+  return (
+    <Link to={to} aria-label={label}>
+      <SecondaryButton type="button" className="inline-flex items-center gap-1.5">
+        <X className="h-4 w-4" aria-hidden />
+        {label}
+      </SecondaryButton>
+    </Link>
+  );
+}

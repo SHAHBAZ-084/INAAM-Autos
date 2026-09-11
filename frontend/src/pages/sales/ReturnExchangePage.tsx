@@ -25,6 +25,7 @@ import {
   SecondaryButton,
   TextInput,
 } from '../../components/ui/PageShell';
+import { HubCloseButton } from '../../components/ui/HubCloseButton';
 import {
   PaymentMethodFields,
   toApiPaymentMethod,
@@ -355,9 +356,12 @@ export function ReturnExchangePage() {
       title="Return / Exchange"
       subtitle="Search the original invoice — returns are separate records, invoice is never edited"
       actions={
-        <Link to="/sales/list">
-          <SecondaryButton type="button">Recent invoices</SecondaryButton>
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <HubCloseButton to="/sales" />
+          <Link to="/sales/list">
+            <SecondaryButton type="button">Recent invoices</SecondaryButton>
+          </Link>
+        </div>
       }
     >
       <Panel className="mb-4">

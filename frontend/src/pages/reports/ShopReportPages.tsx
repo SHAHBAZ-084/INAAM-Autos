@@ -11,6 +11,7 @@ import {
 } from '../../components/print/PrintDocumentHeader';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { SegmentedControl } from '../../components/ui/SegmentedControl';
+import { HubCloseButton } from '../../components/ui/HubCloseButton';
 import { Printer } from 'lucide-react';
 import {
   FieldLabel,
@@ -22,6 +23,16 @@ import {
   SecondaryButton,
   TextInput,
 } from '../../components/ui/PageShell';
+
+const BRAND_ACCENT = '#C8102E';
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace('#', '').trim();
+  if (h.length === 6) {
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  }
+  return [200, 16, 46];
+}
 
 export function todayInputValue() {
   const d = new Date();
@@ -69,7 +80,39 @@ type ReportShellProps = {
   onPage?: (p: number) => void;
   summary?: ReactNode;
   exportMeta?: ReportExportMeta;
+  /** Statement-style summary boxes under header line (left of title). */
+  headerStats?: Array<{ label: string; value: string; tone?: 'default' | 'success' | 'danger' }>;
+  /** When set, PDF/Excel/CSV/Print use these rows (e.g. all pages) instead of the current page. */
+  resolveExportRows?: () => Promise<(string | number)[][]>;
+  /** Hide date-range preset control (stock reports, etc.). */
+  hidePreset?: boolean;
 };
+
+function ReportStatBoxes({
+  stats,
+}: {
+  stats: Array<{ label: string; value: string; tone?: 'default' | 'success' | 'danger' }>;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {stats.map((s) => (
+        <div
+          key={s.label}
+          className={`min-w-[120px] rounded-md px-3 py-2 text-left ${
+            s.tone === 'success'
+              ? 'bg-success/10 text-success'
+              : s.tone === 'danger'
+                ? 'bg-danger/10 text-danger'
+                : 'bg-[#f3f3f3] text-textPrimary'
+          }`}
+        >
+          <div className="text-[10px] font-semibold uppercase tracking-wide opacity-80">{s.label}</div>
+          <div className="mt-0.5 text-sm font-extrabold tabular-nums">{s.value}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function ReportShell({
   title,
@@ -96,9 +139,14 @@ export function ReportShell({
   onPage,
   summary,
   exportMeta,
+  headerStats,
+  resolveExportRows,
+  hidePreset = false,
 }: ReportShellProps) {
   const [businessMeta, setBusinessMeta] = useState<ReportExportMeta>({});
   const [printSettings, setPrintSettings] = useState<BusinessSettings | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const accent = printSettings?.secondaryColor?.trim() || BRAND_ACCENT;
 
   useEffect(() => {
     api
@@ -107,11 +155,13 @@ export function ReportShell({
         setPrintSettings(settings);
         const logoSrc = await resolveLogoDataUrl(settings.logoUrl);
         const phone = [settings.phoneLabel, settings.phone].filter(Boolean).join(' ').trim();
+        const accentHex = settings.secondaryColor?.trim() || BRAND_ACCENT;
         setBusinessMeta({
           businessName: settings.businessName,
           address: settings.address,
           phone,
           logoSrc,
+          accentRgb: hexToRgb(accentHex),
         });
       })
       .catch(() => undefined);
@@ -121,102 +171,178 @@ export function ReportShell({
     ...businessMeta,
     ...exportMeta,
     generatedAt: exportMeta?.generatedAt ?? new Date().toLocaleString(),
+    accentRgb: exportMeta?.accentRgb ?? businessMeta.accentRgb ?? hexToRgb(accent),
+    summaryStats:
+      exportMeta?.summaryStats ??
+      headerStats?.map((s) => ({ label: s.label, value: s.value })),
   };
 
-  function exportReport(format: 'pdf' | 'excel' | 'csv') {
-    const base = title.replace(/\s+/g, '-').toLowerCase();
-    if (format === 'pdf') downloadPdf(`${base}.pdf`, title, headers, rows, meta);
-    else if (format === 'excel') downloadExcel(`${base}.xlsx`, title.slice(0, 31), headers, rows, meta);
-    else downloadCsv(`${base}.csv`, headers, rows, meta);
+  async function rowsForExport() {
+    if (resolveExportRows) return resolveExportRows();
+    return rows;
   }
 
-  function printReport() {
-    const headerHtml = printSettings
-      ? buildPrintDocumentHeaderHtml(
-          printHeaderFromSettings(printSettings, {
-            title,
-            logoSrc: meta.logoSrc,
-            generatedAt: meta.generatedAt,
-            dateRange: meta.dateRange,
-          }),
-        )
-      : `<h1>${title}</h1>`;
-    const html = `<html><head><title>${title}</title><style>
-      ${printHeaderCss()}
-      body{font-family:Arial,sans-serif;padding:16px;color:#111}
-      table{border-collapse:collapse;width:100%;margin-top:12px}
-      th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;font-size:12px}
-      th{background:#111;color:#fff}
-      tr:nth-child(even){background:#f7f7f7}
-      .num{text-align:right}
-    </style></head><body>${headerHtml}
-    <table><thead><tr>${headers.map((h) => `<th>${h}</th>`).join('')}</tr></thead>
-    <tbody>${rows.map((row) => `<tr>${row.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`;
-    const w = window.open('', '_blank');
-    if (!w) return;
-    w.document.write(html);
-    w.document.close();
-    w.onload = () => w.print();
+  async function exportReport(format: 'pdf' | 'excel' | 'csv') {
+    setExporting(true);
+    try {
+      const exportRows = await rowsForExport();
+      const base = title.replace(/\s+/g, '-').toLowerCase();
+      if (format === 'pdf') downloadPdf(`${base}.pdf`, title, headers, exportRows, meta);
+      else if (format === 'excel') downloadExcel(`${base}.xlsx`, title.slice(0, 31), headers, exportRows, meta);
+      else downloadCsv(`${base}.csv`, headers, exportRows, meta);
+    } finally {
+      setExporting(false);
+    }
   }
+
+  async function printReport() {
+    setExporting(true);
+    try {
+      const exportRows = await rowsForExport();
+      const headerHtml = printSettings
+        ? buildPrintDocumentHeaderHtml(
+            printHeaderFromSettings(printSettings, {
+              title,
+              logoSrc: meta.logoSrc,
+              generatedAt: meta.generatedAt,
+              dateRange: meta.dateRange,
+            }),
+          )
+        : `<h1>${title}</h1>`;
+      const statsHtml =
+        headerStats && headerStats.length
+          ? `<div class="print-summary-row">${headerStats
+              .map(
+                (s) =>
+                  `<div class="print-summary-box">${s.label}<strong>${s.value}</strong></div>`,
+              )
+              .join('')}</div>`
+          : '';
+      const html = `<html><head><title>${title}</title><style>
+      ${printHeaderCss(accent)}
+      body{font-family:Arial,sans-serif;padding:16px;color:#111;background:#fff}
+      table{border-collapse:collapse;width:100%;margin-top:4px}
+      th,td{border-bottom:1px solid #e5e5e5;padding:8px 10px;text-align:left;font-size:11px;vertical-align:top}
+      th{background:${accent};color:#fff;font-weight:700;border-bottom:none}
+      tr:nth-child(even){background:#fafafa}
+      .num{text-align:right}
+      .items-detail{font-size:10px;color:#666;font-weight:500;margin-top:2px;line-height:1.35}
+    </style></head><body class="print-doc-wrap">${headerHtml}${statsHtml}
+    <table class="print-table-accent"><thead><tr>${headers.map((h) => `<th>${h}</th>`).join('')}</tr></thead>
+    <tbody>${exportRows.map((row) => `<tr>${row.map((c) => `<td>${String(c).replace(/\n/g, '<br/>')}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`;
+      const w = window.open('', '_blank');
+      if (!w) return;
+      w.document.write(html);
+      w.document.close();
+      w.onload = () => w.print();
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const phoneLine = meta.phone?.trim() || '';
+  const addressLine = meta.address?.trim() || '';
+  const canExport = rows.length > 0 || Boolean(resolveExportRows);
 
   return (
-    <PageShell title={title} subtitle={subtitle}>
-      <Panel className="mb-4 space-y-3">
-        {onPresetChange && preset ? (
-          <SegmentedControl value={preset} onChange={(v) => onPresetChange(v as DateRangePreset)} options={PRESET_OPTIONS} />
-        ) : null}
-        <div className="flex flex-wrap items-end gap-3">
-          {preset === 'custom' && onFromDate && onToDate ? (
-            <>
-              <FieldLabel>From</FieldLabel>
-              <TextInput type="date" value={fromDate ?? ''} onChange={(e) => onFromDate(e.target.value)} />
-              <FieldLabel>To</FieldLabel>
-              <TextInput type="date" value={toDate ?? ''} onChange={(e) => onToDate(e.target.value)} />
-            </>
-          ) : null}
-          {onSearch ? (
-            <>
-              <FieldLabel>Search</FieldLabel>
-              <TextInput value={search ?? ''} onChange={(e) => onSearch(e.target.value)} placeholder={searchPlaceholder ?? 'Search…'} />
-            </>
-          ) : null}
-          {children}
-          <PrimaryButton type="button" onClick={onLoad} disabled={loading}>
-            {loading ? 'Loading…' : hasLoaded ? 'Refresh' : 'Load Report'}
-          </PrimaryButton>
+    <PageShell
+      title={title}
+      subtitle={subtitle}
+      actions={<HubCloseButton to="/reports" label="Close" />}
+    >
+      <Panel className="mb-4 overflow-hidden p-0">
+        <div className="border-b-2 px-4 py-4 sm:px-5" style={{ borderColor: accent }}>
+          <div className="grid gap-4 sm:grid-cols-[auto_1fr_auto] sm:items-center">
+            <div className="flex min-h-[56px] items-center">
+              {meta.logoSrc ? (
+                <img src={meta.logoSrc} alt="" className="max-h-14 max-w-[140px] object-contain bg-white" />
+              ) : (
+                <div className="text-lg font-extrabold tracking-tight text-textPrimary">
+                  {meta.businessName || 'Business'}
+                </div>
+              )}
+            </div>
+            <div className="text-center">
+              {meta.logoSrc && meta.businessName ? (
+                <div className="text-base font-extrabold leading-snug text-textPrimary sm:text-lg">
+                  {meta.businessName}
+                </div>
+              ) : null}
+            </div>
+            <div className="text-right text-xs font-semibold leading-relaxed text-textSecondary">
+              {phoneLine ? <div>{phoneLine}</div> : null}
+              {addressLine ? <div className="max-w-[220px] sm:ml-auto">{addressLine}</div> : null}
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              {headerStats?.length ? <ReportStatBoxes stats={headerStats} /> : <div />}
+            </div>
+            <div className="text-right">
+              <div className="text-lg font-extrabold text-textPrimary">{title}</div>
+              {meta.dateRange ? <div className="text-xs font-semibold text-textSecondary">{meta.dateRange}</div> : null}
+              <div className="text-xs font-semibold text-textSecondary">Generated: {meta.generatedAt}</div>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <SecondaryButton type="button" onClick={() => exportReport('pdf')} disabled={!rows.length}>
-            Download PDF
-          </SecondaryButton>
-          <SecondaryButton type="button" onClick={() => exportReport('excel')} disabled={!rows.length}>
-            Download Excel
-          </SecondaryButton>
-          <SecondaryButton type="button" onClick={() => exportReport('csv')} disabled={!rows.length}>
-            Download CSV
-          </SecondaryButton>
-          <IconButton
-            icon={Printer}
-            label="Print report"
-            variant="neutral"
-            size="md"
-            onClick={printReport}
-            disabled={!rows.length}
-          >
-            Print
-          </IconButton>
+
+        <div className="space-y-3 px-4 py-4 sm:px-5">
+          {!hidePreset && onPresetChange && preset ? (
+            <SegmentedControl value={preset} onChange={(v) => onPresetChange(v as DateRangePreset)} options={PRESET_OPTIONS} />
+          ) : null}
+          <div className="flex flex-wrap items-end gap-3">
+            {preset === 'custom' && onFromDate && onToDate ? (
+              <>
+                <FieldLabel>From</FieldLabel>
+                <TextInput type="date" value={fromDate ?? ''} onChange={(e) => onFromDate(e.target.value)} />
+                <FieldLabel>To</FieldLabel>
+                <TextInput type="date" value={toDate ?? ''} onChange={(e) => onToDate(e.target.value)} />
+              </>
+            ) : null}
+            {onSearch ? (
+              <>
+                <FieldLabel>Search</FieldLabel>
+                <TextInput value={search ?? ''} onChange={(e) => onSearch(e.target.value)} placeholder={searchPlaceholder ?? 'Search…'} />
+              </>
+            ) : null}
+            {children}
+            <PrimaryButton type="button" onClick={onLoad} disabled={loading}>
+              {loading ? 'Loading…' : hasLoaded ? 'Refresh' : 'Load Report'}
+            </PrimaryButton>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <SecondaryButton type="button" onClick={() => void exportReport('pdf')} disabled={!canExport || exporting}>
+              Download PDF
+            </SecondaryButton>
+            <SecondaryButton type="button" onClick={() => void exportReport('excel')} disabled={!canExport || exporting}>
+              Download Excel
+            </SecondaryButton>
+            <SecondaryButton type="button" onClick={() => void exportReport('csv')} disabled={!canExport || exporting}>
+              Download CSV
+            </SecondaryButton>
+            <IconButton
+              icon={Printer}
+              label="Print report"
+              variant="neutral"
+              size="md"
+              onClick={() => void printReport()}
+              disabled={!canExport || exporting}
+            >
+              Print
+            </IconButton>
+          </div>
+          {error ? <Feedback variant="error">{error}</Feedback> : null}
+          {summary}
         </div>
-        {error ? <Feedback variant="error">{error}</Feedback> : null}
-        {summary}
       </Panel>
 
-      <Panel>
+      <Panel className="overflow-hidden p-0">
         <div className="overflow-x-auto">
-          <table className="app-data-table w-full min-w-[480px] text-left text-sm">
+          <table className="w-full min-w-[480px] text-left text-sm">
             <thead>
-              <tr className="border-b border-border text-textMuted">
+              <tr style={{ backgroundColor: accent }}>
                 {headers.map((h) => (
-                  <th key={h} className="py-2 pr-3 font-medium">
+                  <th key={h} className="px-3 py-2.5 font-semibold text-white">
                     {h}
                   </th>
                 ))}
@@ -225,7 +351,7 @@ export function ReportShell({
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={headers.length} className="py-4 text-textMuted">
+                  <td colSpan={headers.length} className="px-3 py-4 text-textMuted">
                     {loading
                       ? 'Loading…'
                       : hasLoaded
@@ -235,9 +361,9 @@ export function ReportShell({
                 </tr>
               ) : (
                 rows.map((row, i) => (
-                  <tr key={i} className="border-b border-border last:border-0">
+                  <tr key={i} className="border-b border-border/70 odd:bg-white even:bg-surface1/40 last:border-0">
                     {row.map((cell, j) => (
-                      <td key={j} className="py-2 pr-3">
+                      <td key={j} className="whitespace-pre-line px-3 py-2.5 align-top text-textPrimary">
                         {cell}
                       </td>
                     ))}
@@ -248,7 +374,7 @@ export function ReportShell({
           </table>
         </div>
         {page != null && totalPages != null && onPage && totalPages > 1 ? (
-          <div className="mt-3 flex items-center gap-2 text-sm">
+          <div className="flex items-center gap-2 border-t border-border px-3 py-3 text-sm">
             <SecondaryButton type="button" disabled={page <= 1} onClick={() => onPage(page - 1)}>
               Prev
             </SecondaryButton>
@@ -319,6 +445,28 @@ function usePaginatedReport<T extends Record<string, unknown>>(
   const headers = mapHeaders();
   const rows = (result?.items ?? []).map(mapRow);
 
+  const fetchAllRows = useCallback(async () => {
+    const pageSize = 500;
+    let pageNum = 1;
+    let totalPages = 1;
+    const all: (string | number)[][] = [];
+    do {
+      const data = await api.fetchReport<PaginatedResult<T>>(path, {
+        preset,
+        fromDate: preset === 'custom' ? fromDate : undefined,
+        toDate: preset === 'custom' ? toDate : undefined,
+        page: pageNum,
+        pageSize,
+        search: debouncedSearch || undefined,
+        ...extraParams,
+      });
+      all.push(...data.items.map(mapRow));
+      totalPages = data.totalPages;
+      pageNum += 1;
+    } while (pageNum <= totalPages);
+    return all;
+  }, [path, preset, fromDate, toDate, debouncedSearch, extraParams, mapRow]);
+
   return {
     preset,
     setPreset,
@@ -339,6 +487,8 @@ function usePaginatedReport<T extends Record<string, unknown>>(
     totalPages: result?.totalPages ?? 1,
     setExtraParams,
     emptyMessage: result?.emptyMessage ?? options?.emptyMessage,
+    result,
+    fetchAllRows,
   };
 }
 
@@ -387,16 +537,43 @@ function bindPaginatedReport(
 // ─── Sales reports ───────────────────────────────────────────────────────────
 
 export function SalesRangeReportPage() {
-  const r = usePaginatedReport<{ date: string; invoiceNumber: string; customerName: string | null; totalAmount: number; paidAmount: number; remainingAmount: number; paymentMethod: string }>(
+  const r = usePaginatedReport<{
+    date: string;
+    invoiceNumber: string;
+    customerName: string | null;
+    totalAmount: number;
+    paidAmount: number;
+    remainingAmount: number;
+    paymentMethod: string;
+    itemsSummary?: string;
+    lineItems?: Array<{ name: string; quantity: number; rate: number; discount: number; total: number }>;
+  }>(
     '/sales/range',
-    (i) => [formatDate(i.date), i.invoiceNumber, i.customerName ?? 'Walk-in', formatMoney(i.totalAmount), formatMoney(i.paidAmount), formatMoney(i.remainingAmount), i.paymentMethod],
-    () => ['Date', 'Invoice', 'Customer', 'Total', 'Paid', 'Remaining', 'Method'],
+    (i) => {
+      const detail =
+        i.lineItems && i.lineItems.length
+          ? i.lineItems
+              .map((li) => `${li.name} ×${li.quantity} @ ${formatMoney(li.rate)}${li.discount > 0 ? ` (−${formatMoney(li.discount)})` : ''} = ${formatMoney(li.total)}`)
+              .join('\n')
+          : i.itemsSummary || '—';
+      return [
+        formatDate(i.date),
+        i.invoiceNumber,
+        i.customerName ?? 'Walk-in',
+        detail,
+        formatMoney(i.totalAmount),
+        formatMoney(i.paidAmount),
+        formatMoney(i.remainingAmount),
+        i.paymentMethod,
+      ];
+    },
+    () => ['Date', 'Invoice', 'Customer', 'Items sold', 'Total', 'Paid', 'Remaining', 'Method'],
   );
   return (
     <ReportShell
       {...bindPaginatedReport(r, {
         title: 'Sales — Date Range',
-        subtitle: 'All active invoices in period',
+        subtitle: 'Complete invoice lines — what was sold in the period',
         searchPlaceholder: 'Invoice or customer…',
       })}
     />
@@ -509,68 +686,67 @@ export function DailySalesReportPage() {
   const [fromDate, setFromDate] = useState(monthStartInputValue());
   const [toDate, setToDate] = useState(todayInputValue());
   const [rows, setRows] = useState<(string | number)[][]>([]);
-  const [breakdown, setBreakdown] = useState<{
-    range: { label: string };
-    totalCollected: number;
+  const [summary, setSummary] = useState<{
+    fullSale: number;
     cash: number;
     ePayment: number;
-    udhaar: number;
-    byAccount: Array<{ accountName: string; amount: number }>;
+    profit: number;
+    discount: number;
   } | null>(null);
+  const [rangeLabel, setRangeLabel] = useState('');
   const [loading, setLoading] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState('');
-  const headers = ['Date', 'Invoices', 'Gross', 'Discounts', 'Net Sales', 'Cash taken'];
+  const headers = ['Date', 'Product', 'Qty sold', 'Discount', 'Amount'];
 
   async function load() {
     setLoading(true);
     setError('');
     try {
-      const [daily, collection] = await Promise.all([
-        api.fetchReport<
-          PaginatedResult<{
-            date: string;
-            invoiceCount: number;
-            grossSales: number;
-            discounts: number;
-            netSales: number;
-            cashReceived: number;
-          }>
-        >('/sales/daily', {
-          fromDate: preset === 'custom' ? fromDate : undefined,
-          toDate: preset === 'custom' ? toDate : undefined,
-          preset,
-          page: 1,
-          pageSize: 100,
-        }),
-        api.fetchReport<{
-          range: { label: string };
-          totalCollected: number;
+      const data = await api.fetchReport<{
+        range: { label: string };
+        items: Array<{
+          date: string;
+          productName: string;
+          quantity: number;
+          discount: number;
+          amount: number;
+        }>;
+        summary: {
+          fullSale: number;
           cash: number;
           ePayment: number;
-          udhaar: number;
-          byAccount: Array<{ accountName: string; amount: number }>;
-        }>('/sales/collection-breakdown', {
-          preset,
-          fromDate: preset === 'custom' ? fromDate : undefined,
-          toDate: preset === 'custom' ? toDate : undefined,
-        }),
-      ]);
+          profit: number;
+          discount: number;
+        };
+      }>('/sales/daily-detail', {
+        fromDate: preset === 'custom' ? fromDate : undefined,
+        toDate: preset === 'custom' ? toDate : undefined,
+        preset,
+      });
+
+      let lastDate = '';
       setRows(
-        daily.items.map((d) => [
-          d.date,
-          d.invoiceCount,
-          formatMoney(d.grossSales),
-          formatMoney(d.discounts),
-          formatMoney(d.netSales),
-          formatMoney(d.cashReceived),
-        ]),
+        data.items.map((row) => {
+          const showDate = row.date !== lastDate;
+          lastDate = row.date;
+          return [
+            showDate ? formatDate(`${row.date}T12:00:00`) : '',
+            row.productName,
+            row.quantity,
+            formatMoney(row.discount),
+            formatMoney(row.amount),
+          ];
+        }),
       );
-      setBreakdown(collection);
+      setSummary(data.summary);
+      setRangeLabel(data.range?.label || reportDateRangeLabel(preset, fromDate, toDate));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
       setRows([]);
-      setBreakdown(null);
+      setSummary(null);
     } finally {
+      setHasLoaded(true);
       setLoading(false);
     }
   }
@@ -580,190 +756,140 @@ export function DailySalesReportPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when period changes
   }, [preset, fromDate, toDate]);
 
+  const headerStats = summary
+    ? [
+        { label: 'Full sale', value: `Rs ${formatMoney(summary.fullSale)}` },
+        { label: 'Cash sale', value: `Rs ${formatMoney(summary.cash)}` },
+        { label: 'E-payment sale', value: `Rs ${formatMoney(summary.ePayment)}` },
+        { label: 'Profit', value: `Rs ${formatMoney(summary.profit)}` },
+        { label: 'Discount', value: `Rs ${formatMoney(summary.discount)}` },
+      ]
+    : undefined;
+
   return (
-    <PageShell
+    <ReportShell
       title="Sales report"
-      subtitle="Choose day, week, month, year, or custom dates — see cash vs e-payment clearly"
-      wide
-      actions={
-        <div className="flex flex-wrap gap-2">
-          <SecondaryButton
-            type="button"
-            disabled={!breakdown && rows.length === 0}
-            onClick={() => {
-              const headers = ['Section', 'Account / metric', 'Amount'];
-              const exportRows: (string | number)[][] = [];
-              if (breakdown) {
-                exportRows.push(['Summary', 'Total collected', breakdown.totalCollected]);
-                exportRows.push(['Summary', 'Cash', breakdown.cash]);
-                exportRows.push(['Summary', 'E-payment', breakdown.ePayment]);
-                exportRows.push(['Summary', 'Udhaar still open', breakdown.udhaar]);
-                for (const row of breakdown.byAccount) {
-                  exportRows.push(['Landed', row.accountName, row.amount]);
-                }
-              }
-              for (const row of rows) {
-                exportRows.push(['Daily', ...row]);
-              }
-              downloadExcel('sales-report.xlsx', 'Sales', headers, exportRows);
-            }}
-          >
-            Download Excel
-          </SecondaryButton>
-          <SecondaryButton
-            type="button"
-            disabled={!breakdown && rows.length === 0}
-            onClick={() => {
-              const headers = ['Date', 'Invoices', 'Gross', 'Discounts', 'Net Sales', 'Cash taken'];
-              downloadPdf(
-                'sales-report.pdf',
-                `Sales report — ${breakdown?.range.label ?? preset}`,
-                headers,
-                rows,
-              );
-            }}
-          >
-            Download PDF
-          </SecondaryButton>
-        </div>
-      }
-    >
-      <Panel className="mb-4">
-        <p className="mb-2 text-xs font-medium text-textMuted">Period</p>
-        <SegmentedControl
-          value={preset}
-          onChange={(v) => setPreset(v as DateRangePreset)}
-          options={PRESET_OPTIONS}
-        />
-        {preset === 'custom' ? (
-          <div className="mt-3 flex flex-wrap gap-3">
-            <div>
-              <FieldLabel>From</FieldLabel>
-              <TextInput type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-            </div>
-            <div>
-              <FieldLabel>To</FieldLabel>
-              <TextInput type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-            </div>
-          </div>
-        ) : null}
-        {error ? <Feedback variant="error" className="mt-3">{error}</Feedback> : null}
-      </Panel>
-
-      {breakdown ? (
-        <Panel className="mb-4">
-          <h2 className="text-base font-semibold text-textPrimary">Money collected — {breakdown.range.label}</h2>
-          <p className="mt-1 text-sm text-textSecondary">
-            Total received in this period: <strong>Rs {formatMoney(breakdown.totalCollected)}</strong>
-          </p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border border-success/35 bg-success/5 p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-textMuted">Cash</p>
-              <p className="mt-1 text-2xl font-bold text-success">Rs {formatMoney(breakdown.cash)}</p>
-            </div>
-            <div className="rounded-xl border border-accent/40 bg-accent/5 p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-textMuted">E-payment</p>
-              <p className="mt-1 text-2xl font-bold text-textPrimary">Rs {formatMoney(breakdown.ePayment)}</p>
-            </div>
-            <div className="rounded-xl border border-warning/35 bg-warning/5 p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-textMuted">Udhaar still open</p>
-              <p className="mt-1 text-2xl font-bold text-warning">Rs {formatMoney(breakdown.udhaar)}</p>
-            </div>
-          </div>
-          {breakdown.byAccount.length > 0 ? (
-            <div className="mt-4">
-                  <p className="mb-2 text-sm font-semibold text-textPrimary">Where money landed (matches total above)</p>
-              <ul className="divide-y divide-border rounded-lg border border-border">
-                {breakdown.byAccount.map((row) => (
-                  <li key={row.accountName} className="flex justify-between gap-3 px-3 py-2.5 text-sm">
-                    <span className="text-textSecondary">{row.accountName}</span>
-                    <span className="font-semibold tabular-nums">Rs {formatMoney(row.amount)}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <p className="mt-3 text-sm text-textMuted">No collection detail for this period yet.</p>
-          )}
-        </Panel>
-      ) : null}
-
-      <Panel>
-        <h2 className="mb-1 text-base font-semibold text-textPrimary">Day-by-day list</h2>
-        <p className="mb-3 text-sm text-textSecondary">Each row is one calendar day in the selected period</p>
-        {loading ? <p className="text-sm text-textMuted">Loading…</p> : null}
-        <div className="overflow-x-auto">
-          <table className="app-data-table w-full min-w-[480px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-border text-textMuted">
-                {headers.map((h) => (
-                  <th key={h} className="py-2 pr-3 font-medium">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr>
-                  <td colSpan={headers.length} className="py-4 text-textMuted">
-                    {loading ? 'Loading…' : 'No sales in this period.'}
-                  </td>
-                </tr>
-              ) : (
-                rows.map((row, i) => (
-                  <tr key={i} className="border-b border-border last:border-0">
-                    {row.map((cell, j) => (
-                      <td key={j} className="py-2 pr-3">
-                        {cell}
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
-    </PageShell>
+      subtitle="Product-wise day summary for the selected period"
+      headers={headers}
+      rows={rows}
+      loading={loading}
+      hasLoaded={hasLoaded}
+      error={error}
+      onLoad={() => void load()}
+      preset={preset}
+      onPresetChange={setPreset}
+      fromDate={fromDate}
+      toDate={toDate}
+      onFromDate={setFromDate}
+      onToDate={setToDate}
+      headerStats={headerStats}
+      exportMeta={{ dateRange: rangeLabel || reportDateRangeLabel(preset, fromDate, toDate) }}
+      emptyMessage="No sales in this period."
+    />
   );
 }
 
 // ─── Stock reports ───────────────────────────────────────────────────────────
 
 export function CurrentStockReportPage() {
-  const r = usePaginatedReport<{ name: string; sku: string; categoryName: string | null; currentStock: number; costValue: number; sellingValue: number }>(
+  type StockItem = {
+    name: string;
+    sku: string;
+    categoryName: string | null;
+    currentStock: number;
+    costValue: number;
+    sellingValue: number;
+  };
+  type StockResult = PaginatedResult<StockItem> & {
+    summary?: {
+      productCount: number;
+      fullStockCount: number;
+      totalCostValue: number;
+      totalSellingValue: number;
+    };
+  };
+
+  const mapRow = (i: StockItem) =>
+    [i.name, i.sku, i.categoryName ?? '—', i.currentStock, formatMoney(i.costValue), formatMoney(i.sellingValue)] as (
+      | string
+      | number
+    )[];
+  const r = usePaginatedReport<StockItem>(
     '/stock/current',
-    (i) => [i.name, i.sku, i.categoryName ?? '—', i.currentStock, formatMoney(i.costValue), formatMoney(i.sellingValue)],
+    mapRow,
     () => ['Product', 'SKU', 'Category', 'Stock', 'Cost Value', 'Selling Value'],
   );
-  return <ReportShell {...bindPaginatedReport(r, { title: 'Current Stock' })} />;
+  const summary = (r.result as StockResult | null)?.summary;
+  const headerStats = summary
+    ? [
+        { label: 'Products', value: String(summary.productCount) },
+        { label: 'Full stock count', value: String(summary.fullStockCount) },
+        { label: 'Total cost (purchase)', value: `Rs ${formatMoney(summary.totalCostValue)}` },
+        { label: 'Estimated sale value', value: `Rs ${formatMoney(summary.totalSellingValue)}` },
+      ]
+    : undefined;
+
+  return (
+    <ReportShell
+      {...bindPaginatedReport(r, {
+        title: 'Current Stock',
+        hidePreset: true,
+        headerStats,
+        resolveExportRows: r.fetchAllRows,
+      })}
+    />
+  );
 }
 
 export function LowStockReportPage() {
-  const r = usePaginatedReport<{
+  type LowItem = {
     name: string;
     sku: string;
     currentStock: number;
     variantLabel?: string | null;
     lowStockLimit?: number;
-  }>(
-    '/stock/low',
-    (i) => [
+    qtyToRestock?: number;
+    estimatedPurchaseValue?: number;
+  };
+  type LowResult = PaginatedResult<LowItem> & {
+    summary?: { lowStockCount: number; estimatedPurchaseValue: number; restockLimit: number };
+  };
+
+  const mapRow = (i: LowItem) =>
+    [
       i.variantLabel ? `${i.name} — ${i.variantLabel}` : i.name,
       i.sku,
       i.currentStock,
       i.lowStockLimit ?? '—',
-    ],
-    () => ['Product', 'SKU', 'Stock', 'Limit'],
+      i.qtyToRestock ?? '—',
+      formatMoney(i.estimatedPurchaseValue ?? 0),
+    ] as (string | number)[];
+
+  const r = usePaginatedReport<LowItem>(
+    '/stock/low',
+    mapRow,
+    () => ['Product', 'SKU', 'Stock', 'Limit', 'Qty to buy', 'Est. purchase'],
     { emptyMessage: 'Nothing is low stock from your set limit.' },
   );
+  const summary = (r.result as LowResult | null)?.summary;
+  const headerStats = summary
+    ? [
+        { label: 'Low stock products', value: String(summary.lowStockCount) },
+        {
+          label: `Est. purchase (to limit ${summary.restockLimit})`,
+          value: `Rs ${formatMoney(summary.estimatedPurchaseValue)}`,
+        },
+      ]
+    : undefined;
 
   return (
     <ReportShell
       {...bindPaginatedReport(r, {
         title: 'Low Stock',
         subtitle: 'Products / variants at or below the low-stock limit (includes out of stock)',
+        hidePreset: true,
+        headerStats,
+        resolveExportRows: r.fetchAllRows,
       })}
     />
   );
@@ -847,25 +973,94 @@ export function PurchasesReportPage() {
   const [period, setPeriod] = useState<'today' | 'month' | 'year' | 'lifetime'>('month');
   const [rows, setRows] = useState<(string | number)[][]>([]);
   const [loading, setLoading] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const headers = ['Date', 'Supplier', 'Total', 'Paid', 'Remaining'];
+  const [summary, setSummary] = useState<{ totalAmount: number; paidAmount: number; remainingAmount: number } | null>(
+    null,
+  );
+  const headers = ['Date', 'Supplier', 'Products purchased', 'Total', 'Paid', 'Remaining'];
+
+  type PurchaseRow = {
+    date: string;
+    supplierName: string;
+    totalAmount: number;
+    paidAmount: number;
+    remainingAmount: number;
+    itemsSummary?: string;
+    lineItems?: Array<{
+      name: string;
+      sku: string;
+      quantity: number;
+      purchasePrice: number;
+      discount: number;
+      lineTotal: number;
+    }>;
+  };
+
+  function mapPurchaseRows(items: PurchaseRow[]) {
+    return items.map((p) => {
+      const detail =
+        p.lineItems && p.lineItems.length
+          ? p.lineItems
+              .map(
+                (li) =>
+                  `${li.name} ×${li.quantity} @ ${formatMoney(li.purchasePrice)}${
+                    li.discount > 0 ? ` (−${formatMoney(li.discount)})` : ''
+                  } = ${formatMoney(li.lineTotal)}`,
+              )
+              .join('\n')
+          : p.itemsSummary || '—';
+      return [
+        formatDate(p.date),
+        p.supplierName,
+        detail,
+        formatMoney(p.totalAmount),
+        formatMoney(p.paidAmount),
+        formatMoney(p.remainingAmount),
+      ] as (string | number)[];
+    });
+  }
 
   async function load() {
     setLoading(true);
     setError('');
     try {
-      const data = await api.fetchReport<PaginatedResult<{ date: string; supplierName: string; totalAmount: number; paidAmount: number; remainingAmount: number }>>('/purchases', { period, page, pageSize: 20 });
-      setRows(data.items.map((p) => [formatDate(p.date), p.supplierName, formatMoney(p.totalAmount), formatMoney(p.paidAmount), formatMoney(p.remainingAmount)]));
+      const data = await api.fetchReport<
+        PaginatedResult<PurchaseRow> & {
+          summary?: { totalAmount: number; paidAmount: number; remainingAmount: number };
+        }
+      >('/purchases', { period, page, pageSize: 20 });
+      setRows(mapPurchaseRows(data.items));
       setTotalPages(data.totalPages);
+      setSummary(data.summary ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
       setRows([]);
+      setSummary(null);
     } finally {
+      setHasLoaded(true);
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    setPage(1);
+  }, [period]);
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period, page]);
+
+  const headerStats = summary
+    ? [
+        { label: 'Paid amount', value: `Rs ${formatMoney(summary.paidAmount)}` },
+        { label: 'Remain to pay', value: `Rs ${formatMoney(summary.remainingAmount)}` },
+        { label: 'Purchase total', value: `Rs ${formatMoney(summary.totalAmount)}` },
+      ]
+    : undefined;
 
   return (
     <ReportShell
@@ -873,19 +1068,43 @@ export function PurchasesReportPage() {
       headers={headers}
       rows={rows}
       loading={loading}
+      hasLoaded={hasLoaded}
       error={error}
       onLoad={() => void load()}
       page={page}
       totalPages={totalPages}
       onPage={setPage}
+      hidePreset
+      headerStats={headerStats}
+      resolveExportRows={async () => {
+        const pageSize = 500;
+        let pageNum = 1;
+        let pages = 1;
+        const all: (string | number)[][] = [];
+        do {
+          const data = await api.fetchReport<PaginatedResult<PurchaseRow>>('/purchases', {
+            period,
+            page: pageNum,
+            pageSize,
+          });
+          all.push(...mapPurchaseRows(data.items));
+          pages = data.totalPages;
+          pageNum += 1;
+        } while (pageNum <= pages);
+        return all;
+      }}
     >
       <FieldLabel>Period</FieldLabel>
-      <select className="rounded border border-border px-2 py-1 text-sm" value={period} onChange={(e) => setPeriod(e.target.value as typeof period)}>
-          <option value="today">Today</option>
-          <option value="month">Month</option>
-          <option value="year">Year</option>
-          <option value="lifetime">Lifetime</option>
-        </select>
+      <select
+        className="rounded border border-border px-2 py-1 text-sm"
+        value={period}
+        onChange={(e) => setPeriod(e.target.value as typeof period)}
+      >
+        <option value="today">Today</option>
+        <option value="month">Month</option>
+        <option value="year">Year</option>
+        <option value="lifetime">Lifetime</option>
+      </select>
     </ReportShell>
   );
 }

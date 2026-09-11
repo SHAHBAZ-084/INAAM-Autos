@@ -538,11 +538,58 @@ export async function getInvoice(id: number) {
   return serializeInvoice(row);
 }
 
-export async function listInvoices(params: { page?: number; pageSize?: number; status?: InvoiceStatus } = {}) {
+export async function listInvoices(
+  params: {
+    page?: number;
+    pageSize?: number;
+    status?: InvoiceStatus;
+    search?: string;
+    fromDate?: string;
+    toDate?: string;
+    paymentMethod?: string;
+  } = {},
+) {
   const page = Math.max(1, params.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, params.pageSize ?? 20));
   const where: Prisma.InvoiceWhereInput = {};
   if (params.status) where.status = params.status;
+
+  if (params.search?.trim()) {
+    const q = params.search.trim();
+    where.OR = [
+      { invoiceNumber: { contains: q } },
+      { customer: { name: { contains: q } } },
+      { customer: { phone: { contains: q } } },
+    ];
+  }
+
+  if (params.fromDate || params.toDate) {
+    where.date = {};
+    if (params.fromDate) {
+      const from = new Date(`${params.fromDate}T00:00:00`);
+      if (!Number.isNaN(from.getTime())) where.date.gte = from;
+    }
+    if (params.toDate) {
+      const to = new Date(`${params.toDate}T23:59:59.999`);
+      if (!Number.isNaN(to.getTime())) where.date.lte = to;
+    }
+  }
+
+  if (params.paymentMethod?.trim()) {
+    const method = params.paymentMethod.trim().toUpperCase();
+    if (method === 'E_PAYMENT') {
+      where.paymentMethod = {
+        in: [
+          SalePaymentMethod.CARD,
+          SalePaymentMethod.EASYPAISA,
+          SalePaymentMethod.JAZZCASH,
+          SalePaymentMethod.BANK_TRANSFER,
+        ],
+      };
+    } else if ((Object.values(SalePaymentMethod) as string[]).includes(method)) {
+      where.paymentMethod = method as SalePaymentMethod;
+    }
+  }
 
   const [total, rows] = await Promise.all([
     prisma.invoice.count({ where }),

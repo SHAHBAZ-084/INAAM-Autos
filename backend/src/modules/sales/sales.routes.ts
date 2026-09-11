@@ -69,8 +69,21 @@ salesRouter.get(
   asyncHandler(async (req, res) => {
     const page = req.query.page ? parseInt(String(req.query.page), 10) : undefined;
     const pageSize = req.query.pageSize ? parseInt(String(req.query.pageSize), 10) : undefined;
-    const status = req.query.status === 'CANCELLED' ? 'CANCELLED' : req.query.status === 'ACTIVE' ? 'ACTIVE' : undefined;
-    const result = await salesService.listInvoices({ page, pageSize, status: status as 'ACTIVE' | 'CANCELLED' | undefined });
+    const status =
+      req.query.status === 'CANCELLED' ? 'CANCELLED' : req.query.status === 'ACTIVE' ? 'ACTIVE' : undefined;
+    const search = req.query.search ? String(req.query.search) : undefined;
+    const fromDate = req.query.fromDate ? String(req.query.fromDate) : undefined;
+    const toDate = req.query.toDate ? String(req.query.toDate) : undefined;
+    const paymentMethod = req.query.paymentMethod ? String(req.query.paymentMethod) : undefined;
+    const result = await salesService.listInvoices({
+      page,
+      pageSize,
+      status: status as 'ACTIVE' | 'CANCELLED' | undefined,
+      search,
+      fromDate,
+      toDate,
+      paymentMethod,
+    });
     res.json(result);
   }),
 );
