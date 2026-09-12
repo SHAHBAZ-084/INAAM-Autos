@@ -79,51 +79,43 @@ export function TrialBalancePage() {
     >
       <Panel className="mb-4 overflow-hidden p-0">
         <div className="border-b-2 px-4 py-4 sm:px-5" style={{ borderColor: accent }}>
-          <div className="grid gap-4 sm:grid-cols-[auto_1fr_auto] sm:items-center">
-            <div className="flex min-h-[56px] items-center">
+          <div className="grid gap-4 sm:grid-cols-[auto_1fr_auto] sm:items-start">
+            <div className="flex min-h-[56px] items-start">
               {logoSrc ? (
                 <img src={logoSrc} alt="" className="max-h-14 max-w-[140px] object-contain bg-white" />
-              ) : (
-                <div className="text-lg font-extrabold text-textPrimary">{biz?.name || 'Business'}</div>
-              )}
-            </div>
-            <div className="text-center">
-              {logoSrc && biz?.name ? (
-                <div className="text-base font-extrabold text-textPrimary sm:text-lg">{biz.name}</div>
               ) : null}
             </div>
+            <div className="text-center">
+              {biz?.name ? (
+                <div className="text-base font-extrabold text-textPrimary sm:text-lg">{biz.name}</div>
+              ) : null}
+              <div className="mt-1 text-base font-extrabold text-textPrimary sm:text-lg">Trial Balance</div>
+            </div>
             <div className="text-right text-xs font-semibold leading-relaxed text-textSecondary">
-              {biz?.phone ? <div>{biz.phone}</div> : null}
               {biz?.address ? <div className="max-w-[220px] sm:ml-auto">{biz.address}</div> : null}
+              {biz?.phone ? <div>{biz.phone}</div> : null}
+              <div>Generated: {new Date().toLocaleString()}</div>
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
-            <div className="flex flex-wrap gap-2">
-              <div
-                className={`min-w-[140px] rounded-md px-3 py-2 ${
-                  data ? (balanced ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger') : 'bg-[#f3f3f3]'
-                }`}
-              >
-                <div className="text-[10px] font-semibold uppercase tracking-wide opacity-80">Total Debit</div>
-                <div className="mt-0.5 text-sm font-extrabold tabular-nums">
-                  {data ? `Rs ${formatMoney(data.totalDebit)}` : '—'}
-                </div>
-              </div>
-              <div
-                className={`min-w-[140px] rounded-md px-3 py-2 ${
-                  data ? (balanced ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger') : 'bg-[#f3f3f3]'
-                }`}
-              >
-                <div className="text-[10px] font-semibold uppercase tracking-wide opacity-80">Total Credit</div>
-                <div className="mt-0.5 text-sm font-extrabold tabular-nums">
-                  {data ? `Rs ${formatMoney(data.totalCredit)}` : '—'}
-                </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <div
+              className={`min-w-[140px] rounded-md px-3 py-2 ${
+                data ? (balanced ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger') : 'bg-[#f3f3f3]'
+              }`}
+            >
+              <div className="text-[10px] font-semibold uppercase tracking-wide opacity-80">Total Debit</div>
+              <div className="mt-0.5 text-sm font-extrabold tabular-nums">
+                {data ? `Rs ${formatMoney(data.totalDebit)}` : '—'}
               </div>
             </div>
-            <div className="text-right">
-              <div className="text-lg font-extrabold text-textPrimary">Trial Balance</div>
-              <div className="text-xs font-semibold text-textSecondary">
-                Generated: {new Date().toLocaleString()}
+            <div
+              className={`min-w-[140px] rounded-md px-3 py-2 ${
+                data ? (balanced ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger') : 'bg-[#f3f3f3]'
+              }`}
+            >
+              <div className="text-[10px] font-semibold uppercase tracking-wide opacity-80">Total Credit</div>
+              <div className="mt-0.5 text-sm font-extrabold tabular-nums">
+                {data ? `Rs ${formatMoney(data.totalCredit)}` : '—'}
               </div>
             </div>
           </div>
