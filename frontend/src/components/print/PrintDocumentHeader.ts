@@ -48,7 +48,7 @@ export function printHeaderCss(accent = '#C8102E'): string {
   .print-hdr-center,
   .print-hdr-right {
     display: table-cell;
-    vertical-align: middle;
+    vertical-align: top;
     padding: 0 2mm;
   }
   .print-hdr-left { width: 22%; text-align: left; }
@@ -65,7 +65,7 @@ export function printHeaderCss(accent = '#C8102E'): string {
   }
   .print-hdr-left-inner {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: flex-start;
     min-height: 16mm;
     max-height: 20mm;
@@ -91,29 +91,21 @@ export function printHeaderCss(accent = '#C8102E'): string {
     overflow-wrap: anywhere;
     word-break: break-word;
     white-space: normal;
-    max-height: 2.45em;
     margin: 0 auto;
     padding: 0 1mm;
   }
-  .print-hdr-right-line { margin: 0 0 1.5px; }
-  .print-doc-meta {
-    text-align: right;
-    margin: 0 0 4mm;
-    color: #111;
-  }
   .print-doc-title {
-    font-size: 16px;
+    display: block;
+    text-align: center;
+    font-size: 14px;
     font-weight: 800;
     letter-spacing: 0.02em;
-    margin: 0 0 2px;
+    margin: 2mm auto 0;
     color: #111;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
-  .print-doc-meta-line {
-    font-size: 10px;
-    font-weight: 600;
-    margin: 1px 0;
-    color: #555;
-  }
+  .print-hdr-right-line { margin: 0 0 1.5px; }
   .print-summary-row {
     display: table;
     width: 100%;
@@ -154,6 +146,8 @@ export function buildPrintDocumentHeaderHtml(input: PrintHeaderInput): string {
       ? ''
       : `<div class="business-name-display">${escapeHtml(input.businessName)}</div>`;
 
+  const title = `<div class="print-doc-title">${escapeHtml(input.title)}</div>`;
+
   const phoneParts: string[] = [];
   if (input.showPhone !== false) {
     if (input.phone?.trim()) {
@@ -176,18 +170,15 @@ export function buildPrintDocumentHeaderHtml(input: PrintHeaderInput): string {
   <header class="print-doc-header">
     <div class="print-hdr-row">
       <div class="print-hdr-left"><div class="print-hdr-left-inner">${logo}</div></div>
-      <div class="print-hdr-center">${name}</div>
+      <div class="print-hdr-center">${name}${title}</div>
       <div class="print-hdr-right">
-        ${phoneParts.map((line) => `<div class="print-hdr-right-line">${line}</div>`).join('')}
         ${addressText ? `<div class="print-hdr-right-line">${addressText}</div>` : ''}
+        ${phoneParts.map((line) => `<div class="print-hdr-right-line">${line}</div>`).join('')}
+        ${input.dateRange ? `<div class="print-hdr-right-line">${escapeHtml(input.dateRange)}</div>` : ''}
+        <div class="print-hdr-right-line">Generated: ${escapeHtml(generated)}</div>
       </div>
     </div>
-  </header>
-  <div class="print-doc-meta">
-    <div class="print-doc-title">${escapeHtml(input.title)}</div>
-    ${input.dateRange ? `<div class="print-doc-meta-line">${escapeHtml(input.dateRange)}</div>` : ''}
-    <div class="print-doc-meta-line">Generated: ${escapeHtml(generated)}</div>
-  </div>`;
+  </header>`;
 }
 
 export function printHeaderFromSettings(

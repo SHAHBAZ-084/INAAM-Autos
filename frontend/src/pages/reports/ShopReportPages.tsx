@@ -279,40 +279,34 @@ export function ReportShell({
     >
       <Panel className="mb-4 overflow-hidden p-0">
         <div className="border-b-2 px-4 py-4 sm:px-5" style={{ borderColor: accent }}>
-          <div className="grid gap-4 sm:grid-cols-[auto_1fr_auto] sm:items-center">
-            <div className="flex min-h-[56px] items-center">
+          <div className="grid gap-4 sm:grid-cols-[auto_1fr_auto] sm:items-start">
+            <div className="flex min-h-[56px] items-start">
               {meta.logoSrc ? (
                 <img src={meta.logoSrc} alt="" className="max-h-14 max-w-[140px] object-contain bg-white" />
-              ) : (
-                <div className="text-lg font-extrabold tracking-tight text-textPrimary">
-                  {meta.businessName || t('Business')}
-                </div>
-              )}
+              ) : null}
             </div>
             <div className="text-center">
-              {meta.logoSrc && meta.businessName ? (
+              {meta.businessName ? (
                 <div className="text-base font-extrabold leading-snug text-textPrimary sm:text-lg">
                   {meta.businessName}
                 </div>
               ) : null}
+              <div className="mt-1 text-base font-extrabold text-textPrimary sm:text-lg">{displayTitle}</div>
             </div>
             <div className="text-right text-xs font-semibold leading-relaxed text-textSecondary">
-              {phoneLine ? <div>{phoneLine}</div> : null}
               {addressLine ? <div className="max-w-[220px] sm:ml-auto">{addressLine}</div> : null}
-            </div>
-          </div>
-          <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
-            <div className="min-w-0 flex-1">
-              {headerStats?.length ? <ReportStatBoxes stats={headerStats} /> : <div />}
-            </div>
-            <div className="text-right">
-              <div className="text-lg font-extrabold text-textPrimary">{displayTitle}</div>
-              {meta.dateRange ? <div className="text-xs font-semibold text-textSecondary">{meta.dateRange}</div> : null}
-              <div className="text-xs font-semibold text-textSecondary">
+              {phoneLine ? <div>{phoneLine}</div> : null}
+              {meta.dateRange ? <div>{meta.dateRange}</div> : null}
+              <div>
                 {t('Generated')}: {meta.generatedAt}
               </div>
             </div>
           </div>
+          {headerStats?.length ? (
+            <div className="mt-4">
+              <ReportStatBoxes stats={headerStats} />
+            </div>
+          ) : null}
         </div>
 
         <div className="space-y-3 px-4 py-4 sm:px-5">

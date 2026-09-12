@@ -163,12 +163,23 @@ async function downloadPdfViaHtmlCanvas(
 
   host.innerHTML = `
 <style>
-  .biz { text-align: center; margin-bottom: 10px; }
-  .biz-name { font-size: 18px; font-weight: 800; margin: 0 0 4px; }
-  .biz-meta { font-size: 12px; color: #444; margin: 2px 0; }
-  h1 { font-size: 17px; font-weight: 800; margin: 12px 0 6px; text-align: start; }
-  .meta-line { font-size: 12px; color: #555; margin: 2px 0; text-align: start; }
-  .stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .hdr {
+    display: grid;
+    grid-template-columns: 1fr 1.4fr 1fr;
+    gap: 12px;
+    align-items: start;
+    border-bottom: 2px solid ${accentCss};
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+  }
+  .hdr-left { text-align: start; }
+  .hdr-center { text-align: center; }
+  .hdr-right { text-align: end; font-size: 12px; color: #444; line-height: 1.45; font-weight: 600; }
+  .hdr-logo { max-height: 64px; max-width: 140px; object-fit: contain; background: #fff; }
+  .biz-name { font-size: 18px; font-weight: 800; margin: 0 0 4px; color: #111; }
+  .rpt-title { font-size: 16px; font-weight: 800; margin: 0; color: #111; }
+  .hdr-right div { margin: 0 0 2px; }
+  .stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
   .stat {
     min-width: 130px;
     background: #f3f3f3;
@@ -189,14 +200,21 @@ async function downloadPdfViaHtmlCanvas(
   tr:nth-child(even) { background: #fafafa; }
   .num { text-align: end; font-variant-numeric: tabular-nums; }
 </style>
-<div class="biz">
-  ${meta?.businessName?.trim() ? `<div class="biz-name">${escapeHtml(meta.businessName.trim())}</div>` : ''}
-  ${meta?.phone?.trim() ? `<div class="biz-meta">${escapeHtml(meta.phone.trim())}</div>` : ''}
-  ${meta?.address?.trim() ? `<div class="biz-meta">${escapeHtml(meta.address.trim())}</div>` : ''}
+<div class="hdr">
+  <div class="hdr-left">
+    ${meta?.logoSrc?.trim() ? `<img class="hdr-logo" src="${escapeHtml(meta.logoSrc.trim())}" alt="" />` : ''}
+  </div>
+  <div class="hdr-center">
+    ${meta?.businessName?.trim() ? `<div class="biz-name">${escapeHtml(meta.businessName.trim())}</div>` : ''}
+    <div class="rpt-title">${escapeHtml(title)}</div>
+  </div>
+  <div class="hdr-right">
+    ${meta?.address?.trim() ? `<div>${escapeHtml(meta.address.trim())}</div>` : ''}
+    ${meta?.phone?.trim() ? `<div>${escapeHtml(meta.phone.trim())}</div>` : ''}
+    ${meta?.dateRange?.trim() ? `<div>${escapeHtml(meta.dateRange.trim())}</div>` : ''}
+    <div>${escapeHtml(generated)}</div>
+  </div>
 </div>
-<h1>${escapeHtml(title)}</h1>
-${meta?.dateRange?.trim() ? `<div class="meta-line">${escapeHtml(meta.dateRange.trim())}</div>` : ''}
-<div class="meta-line">${escapeHtml(generated)}</div>
 ${statsHtml}
 <table>
   <thead><tr>${headers
@@ -349,14 +367,14 @@ export async function downloadPdf(
   nameLines.forEach((line, i) => {
     doc.text(line, centerX, startY + i * 5.5, { align: 'center', maxWidth: pageWidth * 0.46 });
   });
+  let centerBottom = startY + Math.max(1, nameLines.length) * 5.5;
+  doc.setFontSize(12);
+  doc.text(title, centerX, centerBottom + 2, { align: 'center', maxWidth: pageWidth * 0.5 });
+  centerBottom += 7;
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   let rightY = 12;
-  if (meta?.phone?.trim()) {
-    doc.text(meta.phone.trim(), rightX, rightY, { align: 'right', maxWidth: 55 });
-    rightY += 4;
-  }
   if (meta?.address?.trim()) {
     const addrLines = doc.splitTextToSize(meta.address.trim(), 55) as string[];
     addrLines.slice(0, 3).forEach((ln) => {
@@ -364,28 +382,25 @@ export async function downloadPdf(
       rightY += 4;
     });
   }
+  if (meta?.phone?.trim()) {
+    doc.text(meta.phone.trim(), rightX, rightY, { align: 'right', maxWidth: 55 });
+    rightY += 4;
+  }
+  if (meta?.dateRange?.trim()) {
+    doc.text(meta.dateRange.trim(), rightX, rightY, { align: 'right', maxWidth: 55 });
+    rightY += 4;
+  }
+  doc.text(`Generated: ${meta?.generatedAt ?? new Date().toLocaleString()}`, rightX, rightY, {
+    align: 'right',
+    maxWidth: 55,
+  });
+  rightY += 4;
 
-  startY = Math.max(8 + nameLines.length * 5.5, rightY, 26) + 2;
+  startY = Math.max(8 + 16, centerBottom, rightY) + 2;
   const accent = meta?.accentRgb ?? ([200, 16, 46] as [number, number, number]);
   doc.setDrawColor(accent[0], accent[1], accent[2]);
   doc.setLineWidth(0.6);
   doc.line(leftX, startY, rightX, startY);
-  startY += 8;
-
-  doc.setFontSize(14);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(17, 17, 17);
-  doc.text(title, rightX, startY, { align: 'right' });
-  startY += 5;
-
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(85, 85, 85);
-  if (meta?.dateRange?.trim()) {
-    doc.text(meta.dateRange.trim(), rightX, startY, { align: 'right' });
-    startY += 4;
-  }
-  doc.text(`Generated: ${meta?.generatedAt ?? new Date().toLocaleString()}`, rightX, startY, { align: 'right' });
   startY += 6;
   doc.setTextColor(0, 0, 0);
 
