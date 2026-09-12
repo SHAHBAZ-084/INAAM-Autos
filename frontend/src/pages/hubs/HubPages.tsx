@@ -101,7 +101,7 @@ export function ReportsHubPage() {
         {
           label: 'Best Selling Products',
           to: '/reports/sales/best-selling',
-          description: 'Top products by sold qty — stock left, revenue, and profit',
+          description: 'Product-wise sales — least sold first, optional max qty filter',
           tone: 'green',
         },
         { label: 'Current Stock', to: '/reports/stock/current', description: 'What you have on hand', tone: 'teal' },

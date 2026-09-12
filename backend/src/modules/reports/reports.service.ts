@@ -589,8 +589,9 @@ export async function reportProductProfit(params: {
 }
 
 /**
- * Best-selling products for a period.
- * Optional minSoldQty filters to products with sold qty >= that value (default: all with any sales).
+ * Product-wise sales overview for a period (slow movers first).
+ * Optional maxSoldQty keeps products with sold qty <= that value (dead / low sales).
+ * Includes products with zero sales in the period when max allows (or no max).
  */
 export async function reportBestSellingProducts(params: {
   preset?: DateRangePreset;
@@ -599,61 +600,68 @@ export async function reportBestSellingProducts(params: {
   page?: number;
   pageSize?: number;
   search?: string;
-  /** Minimum net sold quantity in the period (inclusive). Default 1 = any sold. */
-  minSoldQty?: number;
+  /** Maximum net sold quantity in the period (inclusive). Omit = no max (full overview). */
+  maxSoldQty?: number;
 }) {
   const preset = params.preset ?? 'month';
   const range = resolveDateRange(preset, params.fromDate, params.toDate);
   const { page, pageSize } = paginateParams(params.page, params.pageSize);
-  const minSoldQty =
-    params.minSoldQty !== undefined && Number.isFinite(params.minSoldQty)
-      ? Math.max(0, Math.floor(params.minSoldQty))
-      : 1;
+  const maxSoldQty =
+    params.maxSoldQty !== undefined && Number.isFinite(params.maxSoldQty)
+      ? Math.max(0, Math.floor(params.maxSoldQty))
+      : undefined;
 
-  let rows = await getProductWiseProfit(range.from, range.to);
-  rows = rows.filter((r) => r.quantitySold >= minSoldQty);
+  const soldRows = await getProductWiseProfit(range.from, range.to);
+  const soldById = new Map(soldRows.map((r) => [r.productId, r]));
+
+  const allProducts = await prisma.product.findMany({
+    where: { isActive: true },
+    select: {
+      id: true,
+      name: true,
+      sku: true,
+      currentStock: true,
+      variants: { select: { currentStock: true } },
+    },
+  });
+
+  let enriched = allProducts.map((p) => {
+    const sold = soldById.get(p.id);
+    const variantStock = p.variants.reduce((sum, v) => sum + v.currentStock, 0);
+    const stock = p.variants.length > 0 ? variantStock : p.currentStock;
+    return {
+      productId: p.id,
+      name: p.name,
+      sku: p.sku ?? '',
+      quantitySold: sold?.quantitySold ?? 0,
+      stockRemaining: stock,
+      revenue: sold?.revenue ?? 0,
+      profit: sold?.grossProfit ?? 0,
+    };
+  });
+
+  if (maxSoldQty !== undefined) {
+    enriched = enriched.filter((r) => r.quantitySold <= maxSoldQty);
+  }
 
   if (params.search?.trim()) {
     const q = params.search.trim().toLowerCase();
-    rows = rows.filter(
+    enriched = enriched.filter(
       (r) => r.name.toLowerCase().includes(q) || r.sku.toLowerCase().includes(q),
     );
   }
 
-  rows.sort((a, b) => b.quantitySold - a.quantitySold || b.revenue - a.revenue);
-
-  const productIds = rows.map((r) => r.productId);
-  const products = productIds.length
-    ? await prisma.product.findMany({
-        where: { id: { in: productIds } },
-        select: {
-          id: true,
-          currentStock: true,
-          variants: { select: { currentStock: true } },
-        },
-      })
-    : [];
-  const stockById = new Map(
-    products.map((p) => {
-      const variantStock = p.variants.reduce((sum, v) => sum + v.currentStock, 0);
-      const stock = p.variants.length > 0 ? variantStock : p.currentStock;
-      return [p.id, stock] as const;
-    }),
+  // Least sold first (dead / slow movers at top), then name
+  enriched.sort(
+    (a, b) => a.quantitySold - b.quantitySold || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
   );
 
-  const enriched = rows.map((r, index) => ({
+  const withSr = enriched.map((r, index) => ({
+    ...r,
     srNo: index + 1,
-    productId: r.productId,
-    name: r.name,
-    sku: r.sku,
-    quantitySold: r.quantitySold,
-    stockRemaining: stockById.get(r.productId) ?? 0,
-    revenue: r.revenue,
-    profit: r.grossProfit,
   }));
 
-  const pageSlice = paginated(enriched, page, pageSize);
-  // Keep Sr No continuous across pages
+  const pageSlice = paginated(withSr, page, pageSize);
   const start = (pageSlice.page - 1) * pageSlice.pageSize;
   pageSlice.items = pageSlice.items.map((item, i) => ({
     ...item,
@@ -671,13 +679,13 @@ export async function reportBestSellingProducts(params: {
       totalSoldQty,
       totalRevenue,
       totalProfit,
-      minSoldQty,
+      maxSoldQty: maxSoldQty ?? null,
     },
     emptyMessage:
       enriched.length === 0
-        ? minSoldQty > 1
-          ? 'No products sold at or above that quantity in this period.'
-          : 'No sales in this period.'
+        ? maxSoldQty !== undefined
+          ? 'No products at or below that sold quantity in this period.'
+          : 'No products to show.'
         : undefined,
   };
 }

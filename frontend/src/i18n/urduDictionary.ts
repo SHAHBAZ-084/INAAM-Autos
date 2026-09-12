@@ -22,10 +22,11 @@ export const URDU_DICTIONARY: Record<string, string> = {
   'Sign Out': 'باہر نکلیں',
   'Sign in': 'اندر آئیں',
   'Signing in...': 'اندر آ رہے ہیں…',
-  Username: 'یوزر نیم',
+  Username: 'اکاؤنٹ کا نام',
   Password: 'پاس ورڈ',
-  Login: 'لاگ اِن',
+  Login: 'اندر آئیں',
   Logout: 'باہر',
+  'Login failed': 'اندر نہیں آ سکے',
 
   // —— فروخت ہب ——
   'Create sales, review invoices, and process returns': 'نیا بل، پرانی رسیدیں، واپسی',
@@ -543,21 +544,31 @@ export const URDU_DICTIONARY: Record<string, string> = {
   // —— بہترین فروخت رپورٹ ——
   'Best Selling Products': 'سب سے زیادہ بکنے والا مال',
   'Top products by sold qty — stock left, revenue, and profit':
-    'زیادہ بکا مال — باقی اسٹاک، آمدن، منافع',
-  'Top products by sold quantity in the selected period — with stock left, revenue, and profit':
-    'چنی ہوئی مدت میں زیادہ بکا مال — باقی اسٹاک، آمدن اور منافع',
+    'مال کی فروخت — باقی اسٹاک، آمدن، منافع',
+  'Product-wise sales — least sold first, optional max qty filter':
+    'مال کی فروخت — کم بکا پہلے، زیادہ سے زیادہ تعداد کا فلٹر',
+  'Product-wise sales overview — least sold first (dead / slow movers on top)':
+    'مال کے حساب سے فروخت — کم بکا پہلے (بند / کم فروخت اوپر)',
+  'Max sold qty': 'زیادہ سے زیادہ بکی تعداد',
+  'No limit': 'کوئی حد نہیں',
+  'Show products sold at most this many times (leave empty for all)':
+    'اتنی یا کم بار بکا مال دکھائیں (خالی = سب)',
+  'Empty = full list. e.g. 5 = only items sold 0–5 times. Sorted least → most.':
+    'خالی = پوری لسٹ۔ مثلاً 5 = صرف 0 سے 5 بار بکا۔ کم سے زیادہ ترتیب۔',
+  'No products at or below that sold quantity in this period.':
+    'اس مدت میں اتنی یا کم تعداد میں کوئی مال نہیں۔',
+  'No products to show.': 'دکھانے کے لیے کوئی مال نہیں۔',
   'Sr No': 'نمبر',
   'Sold Qty': 'بکی ہوئی تعداد',
   'Stock Remaining': 'باقی اسٹاک',
-  'remains in stock': 'باقی اسٹاک',
-  'Min sold qty': 'کم از کم بکی تعداد',
-  'Show products sold at least this many times': 'اتنی یا زیادہ بار بکا مال دکھائیں',
-  'Default 1 = any sale. Raise to find only high-volume items.':
-    'پہلے سے 1 = کوئی بھی فروخت۔ بڑا نمبر = صرف زیادہ بکا مال۔',
   'Product name or code…': 'مال کا نام یا کوڈ…',
-  'No products sold at or above that quantity in this period.':
-    'اس مدت میں اتنی تعداد میں کوئی مال نہیں بکا۔',
-  'No sales in this period.': 'اس مدت میں کوئی فروخت نہیں۔',
+  'Urdu keyboard': 'اردو کی بورڈ',
+  Hide: 'چھپائیں',
+  Space: 'خالی جگہ',
+  Backspace: 'مٹائیں',
+  'Show Urdu keyboard': 'اردو کی بورڈ دکھائیں',
+  'English keyboard: type Roman Urdu. Or tap Urdu keys below.':
+    'انگریزی کی بورڈ: رومن اردو لکھیں، یا نیچے اردو بٹن دبائیں۔',
 
   // —— رسید لسٹ / حیثیت ——
   'View and reprint past sales': 'پرانی فروخت دیکھیں / پرنٹ',

@@ -649,7 +649,7 @@ type BestSellingSummary = {
   totalSoldQty: number;
   totalRevenue: number;
   totalProfit: number;
-  minSoldQty: number;
+  maxSoldQty: number | null;
 };
 
 export function BestSellingProductsReportPage() {
@@ -666,15 +666,20 @@ export function BestSellingProductsReportPage() {
     ],
     () => ['Sr No', 'Product Name', 'Sold Qty', 'Stock Remaining', 'Revenue', 'Profit'],
   );
-  const [minSoldQty, setMinSoldQty] = useState('1');
+  const [maxSoldQty, setMaxSoldQty] = useState('');
   const summary = (r.result as { summary?: BestSellingSummary } | null)?.summary;
 
   useEffect(() => {
-    const n = Math.max(0, Math.floor(Number(minSoldQty) || 1));
-    r.setExtraParams({ minSoldQty: String(n) });
+    const trimmed = maxSoldQty.trim();
+    if (trimmed === '') {
+      r.setExtraParams({});
+    } else {
+      const n = Math.max(0, Math.floor(Number(trimmed) || 0));
+      r.setExtraParams({ maxSoldQty: String(n) });
+    }
     r.setPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when filter value changes
-  }, [minSoldQty]);
+  }, [maxSoldQty]);
 
   const headerStats = summary
     ? [
@@ -690,25 +695,28 @@ export function BestSellingProductsReportPage() {
       {...bindPaginatedReport(r, {
         title: 'Best Selling Products',
         subtitle:
-          'Top products by sold quantity in the selected period — with stock left, revenue, and profit',
+          'Product-wise sales overview — least sold first (dead / slow movers on top)',
         searchPlaceholder: 'Product name or code…',
         headerStats,
       })}
     >
       <div className="flex flex-wrap items-end gap-2">
         <div>
-          <FieldLabel>Min sold qty</FieldLabel>
+          <FieldLabel>Max sold qty</FieldLabel>
           <TextInput
             type="number"
             min={0}
             step={1}
             className="w-28"
-            value={minSoldQty}
-            onChange={(e) => setMinSoldQty(e.target.value)}
-            title={t('Show products sold at least this many times')}
+            value={maxSoldQty}
+            onChange={(e) => setMaxSoldQty(e.target.value)}
+            placeholder={t('No limit')}
+            title={t('Show products sold at most this many times (leave empty for all)')}
           />
         </div>
-        <p className="pb-2 text-xs text-textMuted">{t('Default 1 = any sale. Raise to find only high-volume items.')}</p>
+        <p className="pb-2 text-xs text-textMuted">
+          {t('Empty = full list. e.g. 5 = only items sold 0–5 times. Sorted least → most.')}
+        </p>
       </div>
     </ReportShell>
   );

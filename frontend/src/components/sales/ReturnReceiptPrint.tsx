@@ -16,9 +16,17 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;');
 }
 
-/** Thermal: URDU → full Urdu; ENGLISH and BOTH (Combined) → full English. */
+/** Prefer active UI language (localStorage) so print matches what the user sees. */
 function langFromSettings(settings: BusinessSettings): UiLanguage {
-  return settings.uiLanguage === 'URDU' ? 'URDU' : 'ENGLISH';
+  try {
+    const stored = localStorage.getItem('inaam.uiLanguage');
+    if (stored === 'URDU' || stored === 'BOTH' || stored === 'ENGLISH') return stored;
+  } catch {
+    /* ignore */
+  }
+  const raw = settings.uiLanguage;
+  if (raw === 'URDU' || raw === 'BOTH' || raw === 'ENGLISH') return raw;
+  return 'ENGLISH';
 }
 
 function L(settings: BusinessSettings, english: string): string {
@@ -129,7 +137,7 @@ export function buildReturnReceiptHtml(
     ? L(settings, 'Exchange processed:')
     : L(settings, 'Return processed:');
 
-  const urduRtl = isRtlUiLanguage(settings.uiLanguage);
+  const urduRtl = isRtlUiLanguage(langFromSettings(settings));
   const fontFamily = urduRtl ? URDU_PRINT_FONT_STACK : 'Arial, sans-serif';
   const bodySize = urduRtl ? '15px' : '13px';
   const tableSize = urduRtl ? '14px' : '12px';
