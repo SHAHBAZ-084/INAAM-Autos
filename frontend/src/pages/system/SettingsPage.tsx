@@ -10,11 +10,14 @@ import {
   TextInput,
   Tile,
 } from '../../components/ui/PageShell';
+import { RomanUrduInput, RomanUrduTextarea } from '../../components/ui/RomanUrduInput';
 import { DEFAULT_DEVELOPER_CREDIT_LINE } from '../../config/printCredit';
 import { APP_DISPLAY_NAME, APP_INVOICE_FOOTER, APP_INVOICE_PREFIX, APP_TAGLINE, dispatchSettingsUpdated } from '../../config/brand';
 import { DEFAULT_DEVELOPER_CONFIG, parseDeveloperConfig, type DeveloperPrintConfig } from '../../config/developerPrint';
 import { PROTECTED_SETTINGS_FIELD_KEYS } from '../../config/protectedSettingsFields';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useLanguage } from '../../contexts/LanguageContext';
+import type { UiLanguage } from '../../i18n/formatLabel';
 import { useAccessComboListener } from '../../hooks/useAccessComboListener';
 import { api, type BusinessSettings, type CustomLabelPreset, type CustomLabelStyle, type ProductCustomField } from '../../lib/api';
 import { confirmAction } from '../../lib/confirmAction';
@@ -52,12 +55,14 @@ const emptyForm = {
   lowStockLimit: 5,
   backupFolderPath: '',
   themeMode: 'light' as BusinessSettings['themeMode'],
+  uiLanguage: 'ENGLISH' as UiLanguage,
   primaryColor: DEFAULT_PRIMARY_COLOR,
   secondaryColor: DEFAULT_SECONDARY_COLOR,
 };
 
 export function SettingsPage() {
   const { theme, setTheme, refreshThemeFromServer, applyBrandTheme } = useTheme();
+  const { language, setLanguage, t } = useLanguage();
   const [form, setForm] = useState(emptyForm);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -236,6 +241,10 @@ export function SettingsPage() {
           lowStockLimit: settings.lowStockLimit,
           backupFolderPath: settings.backupFolderPath,
           themeMode: settings.themeMode,
+          uiLanguage:
+            settings.uiLanguage === 'URDU' || settings.uiLanguage === 'BOTH'
+              ? settings.uiLanguage
+              : 'ENGLISH',
           primaryColor: settings.primaryColor || DEFAULT_PRIMARY_COLOR,
           secondaryColor: settings.secondaryColor || DEFAULT_SECONDARY_COLOR,
         });
@@ -243,7 +252,13 @@ export function SettingsPage() {
         setThemeDraftSecondary(settings.secondaryColor || DEFAULT_SECONDARY_COLOR);
         setLogoUrl(settings.logoUrl);
         setDeveloperConfig(parseDeveloperConfig(settings.developerConfig));
-        try {
+        if (
+          settings.uiLanguage === 'ENGLISH' ||
+          settings.uiLanguage === 'URDU' ||
+          settings.uiLanguage === 'BOTH'
+        ) {
+          setLanguage(settings.uiLanguage);
+        }        try {
           setCategories(await api.listProductCategories());
         } catch {
           setCategories([]);
@@ -307,6 +322,7 @@ export function SettingsPage() {
           }
         }
         payload.developerConfig = developerConfig;
+        payload.uiLanguage = form.uiLanguage;
       }
 
       const saved = await api.updateSettings(payload as Parameters<typeof api.updateSettings>[0]);
@@ -333,6 +349,8 @@ export function SettingsPage() {
         lowStockLimit: saved.lowStockLimit,
         backupFolderPath: saved.backupFolderPath,
         themeMode: saved.themeMode,
+        uiLanguage:
+          saved.uiLanguage === 'URDU' || saved.uiLanguage === 'BOTH' ? saved.uiLanguage : 'ENGLISH',
         primaryColor: saved.primaryColor || DEFAULT_PRIMARY_COLOR,
         secondaryColor: saved.secondaryColor || DEFAULT_SECONDARY_COLOR,
       }));
@@ -343,6 +361,13 @@ export function SettingsPage() {
       }
       setLogoUrl(saved.logoUrl);
       if (saved.developerConfig) setDeveloperConfig(parseDeveloperConfig(saved.developerConfig));
+      if (
+        saved.uiLanguage === 'ENGLISH' ||
+        saved.uiLanguage === 'URDU' ||
+        saved.uiLanguage === 'BOTH'
+      ) {
+        setLanguage(saved.uiLanguage);
+      }
       setMessage('Settings saved.');
       dispatchSettingsUpdated();
     } catch (err) {
@@ -557,26 +582,26 @@ export function SettingsPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <FieldLabel>Business name</FieldLabel>
-                  <TextInput
+                  <RomanUrduInput
                     value={form.businessName}
-                    onChange={(e) => patchField('businessName', e.target.value)}
+                    onValueChange={(v) => patchField('businessName', v)}
                     required
                   />
                 </div>
                 <div className="sm:col-span-2">
                   <FieldLabel>Tagline</FieldLabel>
-                  <TextInput value={form.tagline} onChange={(e) => patchField('tagline', e.target.value)} />
+                  <RomanUrduInput value={form.tagline} onValueChange={(v) => patchField('tagline', v)} />
                 </div>
                 <div>
                   <FieldLabel>Owner name</FieldLabel>
-                  <TextInput value={form.ownerName} onChange={(e) => patchField('ownerName', e.target.value)} />
+                  <RomanUrduInput value={form.ownerName} onValueChange={(v) => patchField('ownerName', v)} />
                 </div>
                 <div className="sm:col-span-2 grid gap-3 sm:grid-cols-2">
                   <div>
                     <FieldLabel>Phone contact name</FieldLabel>
-                    <TextInput
+                    <RomanUrduInput
                       value={form.phoneLabel}
-                      onChange={(e) => patchField('phoneLabel', e.target.value)}
+                      onValueChange={(v) => patchField('phoneLabel', v)}
                       placeholder="e.g. Ikramullah"
                     />
                   </div>
@@ -592,9 +617,9 @@ export function SettingsPage() {
                 <div className="sm:col-span-2 grid gap-3 sm:grid-cols-2">
                   <div>
                     <FieldLabel>WhatsApp contact name</FieldLabel>
-                    <TextInput
+                    <RomanUrduInput
                       value={form.whatsappLabel}
-                      onChange={(e) => patchField('whatsappLabel', e.target.value)}
+                      onValueChange={(v) => patchField('whatsappLabel', v)}
                       placeholder="e.g. Ehsanullah"
                     />
                   </div>
@@ -609,7 +634,11 @@ export function SettingsPage() {
                 </div>
                 <div className="sm:col-span-2">
                   <FieldLabel>Address</FieldLabel>
-                  <TextInput value={form.address} onChange={(e) => patchField('address', e.target.value)} />
+                  <RomanUrduTextarea
+                    value={form.address}
+                    onValueChange={(v) => patchField('address', v)}
+                    rows={2}
+                  />
                 </div>
                 <div className="sm:col-span-2">
                   <FieldLabel>Developer credit line</FieldLabel>
@@ -708,11 +737,33 @@ export function SettingsPage() {
                 </div>
 
               <div className="sm:col-span-2 rounded-lg border border-border bg-surface1 p-3">
-                <h3 className="mb-2 text-sm font-semibold">Developer Settings</h3>
+                <h3 className="mb-2 text-sm font-semibold">{t('Developer Settings')}</h3>
                 <p className="mb-3 text-xs text-textMuted">
                   Hidden from shop-owner users. Controls what prints on invoices and barcode labels, including
                   field labels (paraphrase keys).
                 </p>
+                <div className="mb-4">
+                  <FieldLabel>System Language</FieldLabel>
+                  <p className="mb-2 text-xs text-textMuted">
+                    Applies to menus, invoices, reports, and labels across the whole system.
+                  </p>
+                  <select
+                    className="w-full rounded-lg border border-border bg-surface2 px-3 py-2 text-sm text-textPrimary"
+                    value={form.uiLanguage}
+                    onChange={(e) => {
+                      const next = e.target.value as UiLanguage;
+                      patchField('uiLanguage', next);
+                      setLanguage(next);
+                    }}
+                  >
+                    <option value="ENGLISH">English</option>
+                    <option value="URDU">Urdu — اردو</option>
+                    <option value="BOTH">English + Urdu (combined)</option>
+                  </select>
+                  <p className="mt-2 text-xs text-textMuted">
+                    Current: {language === 'URDU' ? 'Urdu' : language === 'BOTH' ? 'English + Urdu' : 'English'}
+                  </p>
+                </div>
                 <div className="mb-3 flex flex-col gap-2">
                   <label className="flex items-center gap-2 text-sm">
                     <input
@@ -1181,15 +1232,17 @@ export function SettingsPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <FieldLabel>Invoice footer</FieldLabel>
-                <TextInput value={form.invoiceFooter} onChange={(e) => patchField('invoiceFooter', e.target.value)} />
+                <RomanUrduInput
+                  value={form.invoiceFooter}
+                  onValueChange={(v) => patchField('invoiceFooter', v)}
+                />
               </div>
               <div className="sm:col-span-2">
                 <FieldLabel>Return and exchange policy</FieldLabel>
-                <textarea
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm"
+                <RomanUrduTextarea
                   rows={3}
                   value={form.returnPolicy}
-                  onChange={(e) => patchField('returnPolicy', e.target.value)}
+                  onValueChange={(v) => patchField('returnPolicy', v)}
                 />
               </div>
               <div>

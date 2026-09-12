@@ -3,12 +3,14 @@ import { Navigate } from 'react-router-dom';
 import { APP_DISPLAY_NAME, APP_DEFAULT_LOGO, APP_TAGLINE } from '../config/brand';
 import { BusinessName } from '../components/brand/BusinessName';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
 import { api } from '../lib/api';
 
 const FALLBACK_LOGO = APP_DEFAULT_LOGO;
 
 export function LoginPage() {
   const { user, login } = useAuth();
+  const { t } = useLanguage();
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -85,7 +87,7 @@ export function LoginPage() {
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div>
             <label htmlFor="username" className="mb-1 block text-sm font-medium text-textSecondary">
-              Username
+              {t('Username')}
             </label>
             <input
               id="username"
@@ -100,7 +102,7 @@ export function LoginPage() {
 
           <div>
             <label htmlFor="password" className="mb-1 block text-sm font-medium text-textSecondary">
-              Password
+              {t('Password')}
             </label>
             <input
               id="password"
@@ -122,7 +124,7 @@ export function LoginPage() {
             disabled={submitting}
             className="w-full btn-primary py-2.5 font-medium disabled:cursor-not-allowed"
           >
-            {submitting ? 'Signing in...' : 'Sign in'}
+            {submitting ? t('Signing in...') : t('Sign in')}
           </button>
         </form>
       </div>

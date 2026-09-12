@@ -13,6 +13,7 @@ export const PROTECTED_SETTINGS_FIELD_KEYS = [
   'primaryColor',
   'secondaryColor',
   'developerConfig',
+  'uiLanguage',
 ] as const;
 
 export type ProtectedSettingsFieldKey = (typeof PROTECTED_SETTINGS_FIELD_KEYS)[number];

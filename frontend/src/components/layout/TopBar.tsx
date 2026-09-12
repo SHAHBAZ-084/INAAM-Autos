@@ -5,6 +5,7 @@ import { NAV_GROUP_ICONS, navLinkIcon } from '../../config/navIcons';
 import { APP_DISPLAY_NAME, APP_DEFAULT_LOGO, onSettingsUpdated } from '../../config/brand';
 import { BusinessName } from '../brand/BusinessName';
 import { api } from '../../lib/api';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { voucherTypeColorClass } from '../../lib/format';
 function voucherNavLabelClass(label: string) {
   if (label.startsWith('Payment')) return voucherTypeColorClass('PAYMENT');
@@ -22,6 +23,7 @@ function NavIcon({ label }: { label: string }) {
 function NavSubmenu({ label, children }: { label: string; children: { label: string; to: string; description?: string }[] }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const { t } = useLanguage();
 
   return (
     <div
@@ -37,7 +39,7 @@ function NavSubmenu({ label, children }: { label: string; children: { label: str
       >
         <span className="flex items-center">
           <NavIcon label={label} />
-          {label}
+          {t(label)}
         </span>
         <span className="ml-2 text-textMuted">›</span>
       </button>
@@ -46,7 +48,7 @@ function NavSubmenu({ label, children }: { label: string; children: { label: str
           {children.map((item) => (
             <Link key={item.to} to={item.to} className="app-dropdown-item flex items-center">
               <NavIcon label={item.label} />
-              {item.label}
+              {t(item.label)}
             </Link>
           ))}
         </div>
@@ -59,6 +61,7 @@ function NavDropdown({ label, children }: { label: string; children: NavItem[] }
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const location = useLocation();
+  const { t } = useLanguage();
   const GroupIcon = NAV_GROUP_ICONS[label];
 
   useEffect(() => {
@@ -83,7 +86,7 @@ function NavDropdown({ label, children }: { label: string; children: NavItem[] }
         className={`app-topnav-link gap-1.5 ${open ? 'is-open' : ''}`}
       >
         {GroupIcon ? <GroupIcon className="h-4 w-4 shrink-0" aria-hidden /> : null}
-        {label}
+        {t(label)}
       </button>
       {open ? (
         <div className="app-dropdown left-0 top-full mt-1">
@@ -97,7 +100,7 @@ function NavDropdown({ label, children }: { label: string; children: NavItem[] }
                 className={`app-dropdown-item flex items-center ${voucherNavLabelClass(item.label)}`}
               >
                 <NavIcon label={item.label} />
-                {item.label}
+                {t(item.label)}
               </Link>
             ),
           )}
@@ -109,6 +112,7 @@ function NavDropdown({ label, children }: { label: string; children: NavItem[] }
 
 export function TopBar() {
   const location = useLocation();
+  const { t } = useLanguage();
   const [businessName, setBusinessName] = useState(APP_DISPLAY_NAME);
   const [logoUrl, setLogoUrl] = useState<string>(APP_DEFAULT_LOGO);
 
@@ -159,7 +163,7 @@ export function TopBar() {
                     return <Icon className="h-4 w-4 shrink-0" aria-hidden />;
                   })()
                 ) : null}
-                {group.label}
+                {group.label ? t(group.label) : null}
               </Link>
             ),
           )}

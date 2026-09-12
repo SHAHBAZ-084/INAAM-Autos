@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { PageShell, Panel } from '../../components/ui/PageShell';
 import { navLinkIcon } from '../../config/navIcons';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 export type HubAction = {
   label: string;
@@ -32,6 +33,7 @@ export function ModuleHubPage({
   subtitle?: string;
   actions: HubAction[];
 }) {
+  const { t } = useLanguage();
   return (
     <PageShell title={title} subtitle={subtitle ?? 'Choose an action'} wide>
       <Panel className="border-0 bg-transparent p-0 shadow-none">
@@ -48,9 +50,9 @@ export function ModuleHubPage({
                 <span className="hub-action-icon" aria-hidden>
                   {Icon ? <Icon className="h-5 w-5" /> : null}
                 </span>
-                <span className="hub-action-label">{action.label}</span>
+                <span className="hub-action-label">{t(action.label)}</span>
                 {action.description ? (
-                  <span className="hub-action-desc">{action.description}</span>
+                  <span className="hub-action-desc">{t(action.description)}</span>
                 ) : null}
               </Link>
             );

@@ -3,6 +3,7 @@ import { AppShell } from './components/layout/AppShell';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { LanguageProvider } from './contexts/LanguageContext';
 import { AccountManagePage } from './pages/accounts/AccountManagePage';
 import { AccountsFinancePage } from './pages/accounts/AccountsFinancePage';
 import { AddEPaymentPage } from './pages/accounts/AddEPaymentPage';
@@ -27,6 +28,7 @@ import {
   OutOfStockReportPage,
   PaymentMethodReportPage,
   ProductProfitReportPage,
+  BestSellingProductsReportPage,
   PurchaseReturnsReportPage,
   PurchasesReportPage,
   ReturnsExchangesReportPage,
@@ -83,6 +85,7 @@ export default function App() {
   return (
     <ErrorBoundary>
     <ThemeProvider>
+      <LanguageProvider>
       <AuthProvider>
         <BrowserRouter>
         <Routes>
@@ -145,6 +148,7 @@ export default function App() {
               <Route path="/reports/sales/daily" element={<DailySalesReportPage />} />
               <Route path="/reports/sales/range" element={<SalesRangeReportPage />} />
               <Route path="/reports/sales/product-profit" element={<ProductProfitReportPage />} />
+              <Route path="/reports/sales/best-selling" element={<BestSellingProductsReportPage />} />
               <Route path="/reports/sales/category-profit" element={<CategoryProfitReportPage />} />
               <Route path="/reports/sales/invoice-profit" element={<InvoiceProfitReportPage />} />
               <Route path="/reports/sales/udhaar" element={<UdhaarSalesReportPage />} />
@@ -183,6 +187,7 @@ export default function App() {
         </Routes>
         </BrowserRouter>
       </AuthProvider>
+      </LanguageProvider>
     </ThemeProvider>
     </ErrorBoundary>
   );

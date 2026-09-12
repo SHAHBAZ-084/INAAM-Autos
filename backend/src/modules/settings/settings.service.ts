@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { Prisma, ReceiptSize, ThemeMode } from '@prisma/client';
+import { Prisma, ReceiptSize, ThemeMode, UiLanguage } from '@prisma/client';
 import {
   APP_DISPLAY_NAME,
   APP_INVOICE_FOOTER,
@@ -53,6 +53,7 @@ export const DEFAULT_BUSINESS_SETTINGS = {
   lowStockLimit: 5,
   backupFolderPath: '',
   themeMode: ThemeMode.DARK,
+  uiLanguage: UiLanguage.ENGLISH,
   logoPath: null as string | null,
   primaryColor: DEFAULT_PRIMARY_COLOR,
   secondaryColor: DEFAULT_BRAND_COLOR,
@@ -103,6 +104,7 @@ export type BusinessSettingsUpdateInput = {
   lowStockLimit?: number;
   backupFolderPath?: string;
   themeMode?: ThemeMode;
+  uiLanguage?: UiLanguage;
   logoPath?: string | null;
   primaryColor?: string;
   secondaryColor?: string;
@@ -138,6 +140,7 @@ function serializeSettings(row: {
   lowStockLimit: number;
   backupFolderPath: string;
   themeMode: ThemeMode;
+  uiLanguage?: UiLanguage | string;
   primaryColor: string;
   secondaryColor: string;
   logoPath: string | null;
@@ -157,6 +160,12 @@ function serializeSettings(row: {
   return {
     ...safe,
     themeMode: row.themeMode === ThemeMode.DARK ? 'dark' : 'light',
+    uiLanguage:
+      row.uiLanguage === UiLanguage.URDU || row.uiLanguage === 'URDU'
+        ? 'URDU'
+        : row.uiLanguage === UiLanguage.BOTH || row.uiLanguage === 'BOTH'
+          ? 'BOTH'
+          : 'ENGLISH',
     logoUrl: row.logoPath ? `/uploads/${path.basename(row.logoPath)}` : null,
     developerConfig: parseDeveloperConfig(rawDeveloperConfig),
   };
@@ -332,6 +341,7 @@ export async function updateBusinessSettings(
   if (input.lowStockLimit !== undefined) data.lowStockLimit = input.lowStockLimit;
   if (input.backupFolderPath !== undefined) data.backupFolderPath = input.backupFolderPath.trim();
   if (input.themeMode !== undefined) data.themeMode = input.themeMode;
+  if (input.uiLanguage !== undefined) data.uiLanguage = input.uiLanguage;
   if (input.logoPath !== undefined) data.logoPath = input.logoPath;
   if (input.primaryColor !== undefined) {
     data.primaryColor = normalizeHexColor(input.primaryColor, 'Primary color');

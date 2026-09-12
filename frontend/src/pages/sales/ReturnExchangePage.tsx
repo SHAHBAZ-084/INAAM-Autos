@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { printReturnReceipt } from '../../components/sales/ReturnReceiptPrint';
 import { useFormShortcuts } from '../../hooks/useFormShortcuts';
@@ -9,15 +9,19 @@ import {
   type BusinessSettings,
   type InvoiceForReturn,
   type Product,
+  type ProductCategory,
+  type ProductVariant,
   type PurchasePaymentMethod,
   type ReturnCondition,
 } from '../../lib/api';
 import { formatDate, formatMoney } from '../../lib/format';
 import { shortcutLabel } from '../../lib/shortcuts';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { Trash2 } from 'lucide-react';
 import {
   Feedback,
   FieldLabel,
+  GhostButton,
   IconButton,
   PageShell,
   Panel,
@@ -73,13 +77,47 @@ function lookupToNewItem(result: BarcodeLookupResult): NewItemDraft {
   };
 }
 
+function productToNewItem(product: Product, variantId?: number | null): NewItemDraft | null {
+  if (variantId != null) {
+    const variant = product.variants?.find((v) => v.id === variantId);
+    if (!variant) return null;
+    return {
+      key: lineKey(product.id, variant.id),
+      productId: product.id,
+      variantId: variant.id,
+      name: product.name,
+      variantLabel: [variant.size, variant.colour].filter(Boolean).join(' / ') || null,
+      rate: variant.salePrice ?? product.salePrice,
+      quantity: '1',
+      stock: variant.currentStock,
+    };
+  }
+  if (product.variants && product.variants.length > 0) {
+    return null;
+  }
+  return {
+    key: lineKey(product.id, null),
+    productId: product.id,
+    variantId: null,
+    name: product.name,
+    variantLabel: null,
+    rate: product.salePrice,
+    quantity: '1',
+    stock: product.currentStock,
+  };
+}
+
 export function ReturnExchangePage() {
+  const { t } = useLanguage();
   const [invoiceQuery, setInvoiceQuery] = useState('');
   const [invoice, setInvoice] = useState<InvoiceForReturn | null>(null);
   const [returnDrafts, setReturnDrafts] = useState<ReturnDraft[]>([]);
   const [mode, setMode] = useState<'return' | 'exchange'>('return');
   const [newItems, setNewItems] = useState<NewItemDraft[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [search, setSearch] = useState('');
+  const [searchResults, setSearchResults] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [categoryId, setCategoryId] = useState('');
   const [paymentKind, setPaymentKind] = useState<SimplePayKind>('CASH');
   const [paymentAccountId, setPaymentAccountId] = useState('');
   const [paidAmount, setPaidAmount] = useState('');
@@ -98,8 +136,33 @@ export function ReturnExchangePage() {
 
   useEffect(() => {
     api.getSettings().then(setSettings).catch(() => setSettings(null));
-    api.listProducts({ pageSize: 200, activeOnly: true }).then((r) => setProducts(r.items)).catch(() => setProducts([]));
+    api.listProductCategories().then(setCategories).catch(() => setCategories([]));
   }, []);
+
+  const runSearch = useCallback(async () => {
+    const q = search.trim();
+    if (!q && !categoryId) {
+      setSearchResults([]);
+      return;
+    }
+    try {
+      const result = await api.listProducts({
+        search: q || undefined,
+        categoryId: categoryId ? Number(categoryId) : undefined,
+        pageSize: 12,
+        activeOnly: true,
+      });
+      setSearchResults(result.items);
+    } catch {
+      setSearchResults([]);
+    }
+  }, [search, categoryId]);
+
+  useEffect(() => {
+    if (mode !== 'exchange') return;
+    const timer = setTimeout(() => void runSearch(), 250);
+    return () => clearTimeout(timer);
+  }, [runSearch, mode]);
 
   useEffect(() => {
     const passedInvoice = (location.state as { invoiceNumber?: string } | null)?.invoiceNumber;
@@ -221,8 +284,7 @@ export function ReturnExchangePage() {
   const cashRefundDue = Math.round(Math.max(0, customerRefundDue - udhaarApply) * 100) / 100;
   const showUdhaarRefund = Boolean(invoice?.customer) && customerRefundDue > 0;
 
-  function addNewFromScan(result: BarcodeLookupResult) {
-    const line = lookupToNewItem(result);
+  function addOrIncrementNewItem(line: NewItemDraft) {
     setNewItems((prev) => {
       const existing = prev.find((p) => p.key === line.key);
       if (existing) {
@@ -232,6 +294,22 @@ export function ReturnExchangePage() {
       }
       return [...prev, line];
     });
+  }
+
+  function addNewFromScan(result: BarcodeLookupResult) {
+    addOrIncrementNewItem(lookupToNewItem(result));
+  }
+
+  function addNewFromProduct(product: Product, variantId?: number | null) {
+    const line = productToNewItem(product, variantId);
+    if (!line) return;
+    addOrIncrementNewItem(line);
+    setSearch('');
+    setSearchResults([]);
+  }
+
+  function printOpts() {
+    return { originalInvoiceDate: invoice?.date ?? null };
   }
 
   function buildReturnPayload() {
@@ -294,7 +372,7 @@ export function ReturnExchangePage() {
               : ''),
         );
         if (settings) {
-          printReturnReceipt(result, settings, 'return');
+          printReturnReceipt(result, settings, 'return', printOpts());
           lastPrintRef.current = { data: result, kind: 'return' };
         }
         await onLookup();
@@ -320,7 +398,7 @@ export function ReturnExchangePage() {
             : `Exchange complete. Refund Rs ${formatMoney(result.refundedAmount)}`,
         );
         if (settings) {
-          printReturnReceipt(result, settings, 'exchange');
+          printReturnReceipt(result, settings, 'exchange', printOpts());
           lastPrintRef.current = { data: result, kind: 'exchange' };
         }
         setNewItems([]);
@@ -344,7 +422,13 @@ export function ReturnExchangePage() {
     onSave: () => returnFormRef.current?.requestSubmit(),
     onPrint:
       settings && lastPrintRef.current
-        ? () => printReturnReceipt(lastPrintRef.current!.data, settings, lastPrintRef.current!.kind)
+        ? () =>
+            printReturnReceipt(
+              lastPrintRef.current!.data,
+              settings,
+              lastPrintRef.current!.kind,
+              printOpts(),
+            )
         : undefined,
     onClear: clearReturnForm,
     saveEnabled: Boolean(invoice) && !saving && returnDrafts.length > 0,
@@ -471,85 +555,129 @@ export function ReturnExchangePage() {
 
           {mode === 'exchange' ? (
             <Panel className="mb-4">
-              <h2 className="mb-3 font-semibold">New items</h2>
+              <h2 className="mb-3 font-semibold">Exchange items (new products)</h2>
               <div className="mb-4">
                 <BarcodeScanField onMatch={(r) => addNewFromScan(r)} />
               </div>
-              <div className="mb-3">
-                <FieldLabel>Add from list</FieldLabel>
-                <select
-                  className={SELECT_CLASS}
-                  defaultValue=""
-                  onChange={(e) => {
-                    const id = Number(e.target.value);
-                    if (!id) return;
-                    const product = products.find((p) => p.id === id);
-                    if (!product) return;
-                    if (product.variants?.length) {
-                      const v = product.variants[0]!;
-                      setNewItems((prev) => [
-                        ...prev,
-                        {
-                          key: lineKey(product.id, v.id),
-                          productId: product.id,
-                          variantId: v.id,
-                          name: product.name,
-                          variantLabel: [v.size, v.colour].filter(Boolean).join(' / ') || null,
-                          rate: v.salePrice ?? product.salePrice,
-                          quantity: '1',
-                          stock: v.currentStock,
-                        },
-                      ]);
-                    } else {
-                      setNewItems((prev) => [
-                        ...prev,
-                        {
-                          key: lineKey(product.id, null),
-                          productId: product.id,
-                          variantId: null,
-                          name: product.name,
-                          variantLabel: null,
-                          rate: product.salePrice,
-                          quantity: '1',
-                          stock: product.currentStock,
-                        },
-                      ]);
-                    }
-                    e.target.value = '';
-                  }}
-                >
-                  <option value="">Select product…</option>
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} (stock {p.currentStock})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {newItems.map((line, idx) => (
-                <div key={line.key} className="mb-2 grid gap-2 rounded border border-border/60 p-2 md:grid-cols-4">
-                  <p className="text-sm md:col-span-2">
-                    {line.name}
-                    {line.variantLabel ? ` · ${line.variantLabel}` : ''}
-                  </p>
+              <div className="mb-3 grid gap-3 md:grid-cols-2">
+                <div>
+                  <FieldLabel>Search by name or code</FieldLabel>
                   <TextInput
-                    type="number"
-                    min="1"
-                    value={line.quantity}
-                    onChange={(e) =>
-                      setNewItems((prev) =>
-                        prev.map((row, i) => (i === idx ? { ...row, quantity: e.target.value } : row)),
-                      )
-                    }
-                  />
-                  <IconButton
-                    icon={Trash2}
-                    label="Remove line"
-                    variant="danger"
-                    onClick={() => setNewItems((prev) => prev.filter((_, i) => i !== idx))}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Type product name or code"
                   />
                 </div>
-              ))}
+                <div>
+                  <FieldLabel>Category</FieldLabel>
+                  <select
+                    className={SELECT_CLASS}
+                    value={categoryId}
+                    onChange={(e) => setCategoryId(e.target.value)}
+                  >
+                    <option value="">All categories</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              {searchResults.length > 0 ? (
+                <ul className="mb-4 max-h-52 overflow-y-auto divide-y divide-border rounded-lg border border-border text-sm">
+                  {searchResults.map((product) => (
+                    <li key={product.id} className="px-3 py-2">
+                      <button
+                        type="button"
+                        className="w-full text-left hover:text-accent"
+                        onClick={() => addNewFromProduct(product)}
+                        disabled={Boolean(product.variants?.length)}
+                      >
+                        {product.name}
+                        <span className="ml-2 text-textSecondary">
+                          Rs {formatMoney(product.salePrice)} · Stock {product.currentStock}
+                        </span>
+                      </button>
+                      {product.variants?.length ? (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {product.variants.map((v: ProductVariant) => (
+                            <GhostButton
+                              key={v.id}
+                              type="button"
+                              className="text-xs"
+                              onClick={() => addNewFromProduct(product, v.id)}
+                            >
+                              {[v.size, v.colour].filter(Boolean).join('/') || v.productCode} (
+                              {v.currentStock})
+                            </GhostButton>
+                          ))}
+                        </div>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : search.trim() || categoryId ? (
+                <p className="mb-3 text-xs text-textMuted">No products match this search.</p>
+              ) : (
+                <p className="mb-3 text-xs text-textMuted">Scan a barcode or search to add exchange items.</p>
+              )}
+              {newItems.length === 0 ? (
+                <p className="text-sm text-textSecondary">No exchange items yet.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border text-left text-textSecondary">
+                        <th className="px-2 py-2">Item</th>
+                        <th className="px-2 py-2 text-right">Qty</th>
+                        <th className="px-2 py-2 text-right">Rate</th>
+                        <th className="px-2 py-2 text-right">Total</th>
+                        <th className="px-2 py-2" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {newItems.map((line, idx) => (
+                        <tr key={line.key} className="border-b border-border/60">
+                          <td className="px-2 py-2">
+                            {line.name}
+                            {line.variantLabel ? (
+                              <span className="block text-xs text-textSecondary">{line.variantLabel}</span>
+                            ) : null}
+                          </td>
+                          <td className="px-2 py-2 text-right">
+                            <TextInput
+                              type="number"
+                              min="1"
+                              className="ml-auto w-20 text-right"
+                              value={line.quantity}
+                              onChange={(e) =>
+                                setNewItems((prev) =>
+                                  prev.map((row, i) =>
+                                    i === idx ? { ...row, quantity: e.target.value } : row,
+                                  ),
+                                )
+                              }
+                            />
+                          </td>
+                          <td className="px-2 py-2 text-right">{formatMoney(line.rate)}</td>
+                          <td className="px-2 py-2 text-right">
+                            {formatMoney(Math.max(0, Number(line.quantity) || 0) * line.rate)}
+                          </td>
+                          <td className="px-2 py-2 text-right">
+                            <IconButton
+                              icon={Trash2}
+                              label="Remove line"
+                              variant="danger"
+                              onClick={() => setNewItems((prev) => prev.filter((_, i) => i !== idx))}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </Panel>
           ) : null}
 
@@ -561,18 +689,18 @@ export function ReturnExchangePage() {
                   <span>- Rs {formatMoney(invoice.discount ?? 0)}</span>
                 </p>
               ) : null}
-              <p className="flex justify-between">
-                <span>Calculated return (after discounts)</span>
-                <span>Rs {formatMoney(calculatedReturnTotal)}</span>
-              </p>
               {mode === 'exchange' ? (
                 <>
                   <p className="flex justify-between">
-                    <span>New items</span>
+                    <span>Returned value</span>
+                    <span>Rs {formatMoney(calculatedReturnTotal)}</span>
+                  </p>
+                  <p className="flex justify-between">
+                    <span>Exchange items</span>
                     <span>Rs {formatMoney(newTotal)}</span>
                   </p>
                   <p className="flex justify-between font-semibold text-lg">
-                    <span>{netAmount >= 0 ? 'Customer pays' : 'Refund customer'}</span>
+                    <span>{netAmount >= 0 ? 'Customer pays' : 'Refund to customer'}</span>
                     <span>Rs {formatMoney(Math.abs(netAmount))}</span>
                   </p>
                 </>
@@ -668,8 +796,11 @@ export function ReturnExchangePage() {
 
           <PrimaryButton type="submit" disabled={saving || returnDrafts.length === 0}>
             {saving
-              ? 'Processing…'
-              : shortcutLabel(mode === 'exchange' ? 'Confirm exchange' : 'Confirm return', 'F9')}
+              ? t('Processing…')
+              : shortcutLabel(
+                  t(mode === 'exchange' ? 'Confirm exchange' : 'Confirm return'),
+                  'F9',
+                )}
           </PrimaryButton>
         </form>
       ) : null}

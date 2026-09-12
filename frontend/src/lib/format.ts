@@ -21,12 +21,72 @@ export function formatLedgerBalance(balance: number | string) {
   return n > 0 ? `${abs} Dr` : `${abs} Cr`;
 }
 
+const LANGUAGE_STORAGE_KEY = 'inaam.uiLanguage';
+
+const URDU_MONTHS = [
+  'جنوری',
+  'فروری',
+  'مارچ',
+  'اپریل',
+  'مئی',
+  'جون',
+  'جولائی',
+  'اگست',
+  'ستمبر',
+  'اکتوبر',
+  'نومبر',
+  'دسمبر',
+] as const;
+
+function readUiLanguage(): 'ENGLISH' | 'URDU' | 'BOTH' {
+  try {
+    const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    if (stored === 'ENGLISH' || stored === 'URDU' || stored === 'BOTH') return stored;
+  } catch {
+    /* ignore */
+  }
+  return 'ENGLISH';
+}
+
+function parseDateInput(date: string | Date): Date {
+  return date instanceof Date ? date : new Date(date);
+}
+
+/** Urdu shop date: `2026 ستمبر 12` */
+export function formatUrduDate(date: string | Date): string {
+  const d = parseDateInput(date);
+  if (Number.isNaN(d.getTime())) return '';
+  const day = d.getDate();
+  const month = URDU_MONTHS[d.getMonth()] ?? '';
+  const year = d.getFullYear();
+  return `${year} ${month} ${day}`;
+}
+
+export function formatUrduDateTime(date: string | Date): string {
+  const d = parseDateInput(date);
+  if (Number.isNaN(d.getTime())) return '';
+  const datePart = formatUrduDate(d);
+  const timePart = d.toLocaleTimeString('en-PK', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
+  return `${datePart}، ${timePart}`;
+}
+
 export function formatDate(date: string | Date) {
-  return new Date(date).toLocaleDateString('en-PK', { year: 'numeric', month: 'short', day: 'numeric' });
+  if (readUiLanguage() === 'URDU') return formatUrduDate(date);
+  return parseDateInput(date).toLocaleDateString('en-PK', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
 }
 
 export function formatDateTime(date: string | Date) {
-  return new Date(date).toLocaleString('en-PK', {
+  if (readUiLanguage() === 'URDU') return formatUrduDateTime(date);
+  return parseDateInput(date).toLocaleString('en-PK', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',

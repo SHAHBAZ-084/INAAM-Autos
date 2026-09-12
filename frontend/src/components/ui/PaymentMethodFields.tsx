@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Banknote, Smartphone } from 'lucide-react';
 import { FieldLabel } from './PageShell';
 import { api, type BankAccountOption } from '../../lib/api';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 const SELECT_CLASS =
   'w-full rounded-lg border border-border bg-surface2 px-3 py-2 text-sm text-textPrimary';
@@ -32,6 +33,7 @@ export function PaymentMethodFields({
   requiredAccount?: boolean;
   label?: string;
 }) {
+  const { t } = useLanguage();
   const [accounts, setAccounts] = useState<BankAccountOption[]>([]);
   const [error, setError] = useState('');
 
@@ -70,7 +72,7 @@ export function PaymentMethodFields({
             }`}
           >
             <Banknote className="h-4 w-4 shrink-0" aria-hidden />
-            Cash
+            {t('Cash')}
           </button>
           <button
             type="button"
@@ -82,7 +84,7 @@ export function PaymentMethodFields({
             }`}
           >
             <Smartphone className="h-4 w-4 shrink-0" aria-hidden />
-            E-payment
+            {t('E-payment')}
           </button>
         </div>
       </div>
@@ -95,7 +97,7 @@ export function PaymentMethodFields({
             onChange={(e) => onAccountChange(e.target.value)}
             required={requiredAccount}
           >
-            <option value="">Select account (UBL, JazzCash, …)</option>
+            <option value="">{t('Select account (UBL, JazzCash, …)')}</option>
             {accounts.map((a) => (
               <option key={a.id} value={String(a.id)}>
                 {a.name}

@@ -759,21 +759,48 @@ async function getTopSellingProducts(from: Date | null, to: Date | null, limit =
 
 async function getSalesChart(from: Date | null, to: Date | null) {
   const dateCond = dateFilter(from, to);
-  const invoices = await prisma.invoice.findMany({
-    where: {
-      status: InvoiceStatus.ACTIVE,
-      ...(dateCond ? { date: dateCond } : {}),
-    },
-    select: { date: true, totalAmount: true },
-    orderBy: { date: 'asc' },
-  });
+  const [invoiceItems, exchangeItems, returns] = await Promise.all([
+    prisma.invoiceItem.findMany({
+      where: {
+        invoice: {
+          status: InvoiceStatus.ACTIVE,
+          ...(dateCond ? { date: dateCond } : {}),
+        },
+      },
+      select: {
+        total: true,
+        invoice: { select: { date: true, id: true } },
+      },
+    }),
+    prisma.exchangeItem.findMany({
+      where: { exchange: dateCond ? { date: dateCond } : {} },
+      select: { lineTotal: true, exchange: { select: { date: true } } },
+    }),
+    prisma.saleReturn.findMany({
+      where: dateCond ? { date: dateCond } : {},
+      select: { date: true, totalAmount: true },
+    }),
+  ]);
 
-  const byDay = new Map<string, { netSales: number; invoiceCount: number }>();
-  for (const inv of invoices) {
-    const key = localDateKey(inv.date);
-    const cur = byDay.get(key) ?? { netSales: 0, invoiceCount: 0 };
-    cur.netSales += toNumber(inv.totalAmount);
-    cur.invoiceCount++;
+  const byDay = new Map<string, { netSales: number; invoiceIds: Set<number> }>();
+
+  for (const row of invoiceItems) {
+    const key = localDateKey(row.invoice.date);
+    const cur = byDay.get(key) ?? { netSales: 0, invoiceIds: new Set<number>() };
+    cur.netSales += toNumber(row.total);
+    cur.invoiceIds.add(row.invoice.id);
+    byDay.set(key, cur);
+  }
+  for (const row of exchangeItems) {
+    const key = localDateKey(row.exchange.date);
+    const cur = byDay.get(key) ?? { netSales: 0, invoiceIds: new Set<number>() };
+    cur.netSales += toNumber(row.lineTotal);
+    byDay.set(key, cur);
+  }
+  for (const row of returns) {
+    const key = localDateKey(row.date);
+    const cur = byDay.get(key) ?? { netSales: 0, invoiceIds: new Set<number>() };
+    cur.netSales -= toNumber(row.totalAmount);
     byDay.set(key, cur);
   }
 
@@ -782,7 +809,7 @@ async function getSalesChart(from: Date | null, to: Date | null) {
     .map(([date, v]) => ({
       date,
       netSales: roundMoney(v.netSales),
-      invoiceCount: v.invoiceCount,
+      invoiceCount: v.invoiceIds.size,
     }));
 }
 
@@ -864,7 +891,41 @@ export async function getProductWiseProfit(from: Date | null, to: Date | null) {
     map.set(row.productId, cur);
   }
 
-  // Subtract returns
+  // Add exchange new items (count in period sale + profit)
+  const exchangeItems = await prisma.exchangeItem.findMany({
+    where: { exchange: dateCond ? { date: dateCond } : {} },
+    select: {
+      productId: true,
+      quantity: true,
+      lineTotal: true,
+      costAtSale: true,
+    },
+  });
+  const exchangeProductIds = [...new Set(exchangeItems.map((i) => i.productId))];
+  const exchangeProducts = exchangeProductIds.length
+    ? await prisma.product.findMany({
+        where: { id: { in: exchangeProductIds } },
+        select: { id: true, name: true, sku: true, category: { select: { name: true } } },
+      })
+    : [];
+  const exchangeProductById = new Map(exchangeProducts.map((p) => [p.id, p]));
+  for (const row of exchangeItems) {
+    const product = exchangeProductById.get(row.productId);
+    const cur = map.get(row.productId) ?? {
+      name: product?.name ?? `Product #${row.productId}`,
+      sku: product?.sku ?? '',
+      category: product?.category?.name ?? null,
+      revenue: 0,
+      cogs: 0,
+      qty: 0,
+    };
+    cur.qty += row.quantity;
+    cur.revenue += toNumber(row.lineTotal);
+    cur.cogs += multiplyMoney(toNumber(row.costAtSale), row.quantity);
+    map.set(row.productId, cur);
+  }
+
+  // Subtract returns (removes returned revenue and COGS → profit loses margin only)
   const returnItems = await prisma.saleReturnItem.findMany({
     where: { saleReturn: dateCond ? { date: dateCond } : {} },
     select: {
@@ -903,7 +964,7 @@ export async function getProductWiseProfit(from: Date | null, to: Date | null) {
   }));
 }
 
-/** Invoice-wise profit — historical cost per invoice line. */
+/** Invoice-wise profit — line totals adjusted for returns; exchanges shown as net on original invoice day when linked. */
 export async function getInvoiceWiseProfit(from: Date | null, to: Date | null) {
   const dateCond = dateFilter(from, to);
   const invoices = await prisma.invoice.findMany({
@@ -912,16 +973,41 @@ export async function getInvoiceWiseProfit(from: Date | null, to: Date | null) {
       id: true,
       invoiceNumber: true,
       date: true,
-      totalAmount: true,
       customer: { select: { name: true } },
       items: { select: { total: true, costAtSale: true, quantity: true } },
+      saleReturns: {
+        select: {
+          totalAmount: true,
+          items: { select: { lineTotal: true, costAtReturn: true } },
+          exchange: {
+            select: {
+              newSaleTotal: true,
+              newItems: { select: { lineTotal: true, costAtSale: true, quantity: true } },
+            },
+          },
+        },
+      },
     },
     orderBy: { date: 'desc' },
   });
 
   return invoices.map((inv) => {
-    const revenue = toNumber(inv.totalAmount);
-    const cogs = sumMoney(inv.items.map((i) => multiplyMoney(toNumber(i.costAtSale), i.quantity)));
+    let revenue = sumMoney(inv.items.map((i) => toNumber(i.total)));
+    let cogs = sumMoney(inv.items.map((i) => multiplyMoney(toNumber(i.costAtSale), i.quantity)));
+
+    for (const ret of inv.saleReturns) {
+      for (const item of ret.items) {
+        revenue = roundMoney(revenue - toNumber(item.lineTotal));
+        cogs = roundMoney(cogs - toNumber(item.costAtReturn));
+      }
+      if (ret.exchange) {
+        for (const item of ret.exchange.newItems) {
+          revenue = roundMoney(revenue + toNumber(item.lineTotal));
+          cogs = roundMoney(cogs + multiplyMoney(toNumber(item.costAtSale), item.quantity));
+        }
+      }
+    }
+
     return {
       invoiceId: inv.id,
       invoiceNumber: inv.invoiceNumber,

@@ -1,5 +1,6 @@
 import { forwardRef, ReactNode, RefObject } from 'react';
 import { Link } from 'react-router-dom';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 type PageShellProps = {
   title?: ReactNode;
@@ -21,8 +22,11 @@ export function PageShell({
   wide = false,
   titleRef,
 }: PageShellProps) {
+  const { t } = useLanguage();
   const widthClass = wide ? 'w-full max-w-none' : 'mx-auto w-full max-w-[96rem]';
   const padClass = wide ? 'px-2 py-4 sm:px-3 sm:py-5 lg:px-4' : 'px-3 py-6 sm:px-5';
+  const titleNode = typeof title === 'string' ? t(title) : title;
+  const subtitleText = subtitle ? t(subtitle) : undefined;
 
   if (centerTitle) {
     return (
@@ -33,7 +37,7 @@ export function PageShell({
             tabIndex={-1}
             className="rounded-sm text-center text-2xl font-semibold text-textPrimary outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface3"
           >
-            {title}
+            {titleNode}
           </h1>
           {actions ? <div className="flex flex-wrap justify-center gap-2">{actions}</div> : null}
         </div>
@@ -49,8 +53,8 @@ export function PageShell({
       {showHeader ? (
         <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div>
-            {title ? <h1 className="text-2xl font-semibold text-textPrimary">{title}</h1> : null}
-            {subtitle ? <p className={`text-sm text-textSecondary ${title ? 'mt-1' : ''}`}>{subtitle}</p> : null}
+            {title ? <h1 className="text-2xl font-semibold text-textPrimary">{titleNode}</h1> : null}
+            {subtitleText ? <p className={`text-sm text-textSecondary ${title ? 'mt-1' : ''}`}>{subtitleText}</p> : null}
           </div>
           {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
         </div>
@@ -121,6 +125,7 @@ export function ClickableMetricTile({
   hideLinkHint = false,
   className = '',
 }: ClickableMetricTileProps) {
+  const { t } = useLanguage();
   const sizeClass = size === 'default' ? '' : `kpi-card--${size}`;
   return (
     <Link
@@ -128,12 +133,12 @@ export function ClickableMetricTile({
       className={`kpi-card kpi-card--accent-${accent} ${sizeClass} ${className}`.trim()}
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="kpi-card__label">{label}</p>
+        <p className="kpi-card__label">{t(label)}</p>
         <GrowthIndicator comparison={comparison} />
       </div>
       <p className="kpi-card__value">{value}</p>
-      {sub ? <p className="kpi-card__sub">{sub}</p> : null}
-      {hideLinkHint ? null : <p className="kpi-card__hint">Open report</p>}
+      {sub ? <p className="kpi-card__sub">{typeof sub === 'string' ? t(sub) : sub}</p> : null}
+      {hideLinkHint ? null : <p className="kpi-card__hint">{t('Open report')}</p>}
     </Link>
   );
 }
@@ -148,7 +153,9 @@ export function Panel({ children, className = '' }: { children: ReactNode; class
 }
 
 export function FieldLabel({ children }: { children: ReactNode }) {
-  return <label className="mb-1 block text-sm font-medium text-textSecondary">{children}</label>;
+  const { t } = useLanguage();
+  const label = typeof children === 'string' ? t(children) : children;
+  return <label className="mb-1 block text-sm font-medium text-textSecondary">{label}</label>;
 }
 
 export const TextInput = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
@@ -188,25 +195,33 @@ export const FinancialButton = forwardRef<HTMLButtonElement, React.ButtonHTMLAtt
 
 export const PrimaryButton = forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement>>(
   function PrimaryButton(props, ref) {
-    const { className = '', ...rest } = props;
+    const { className = '', children, ...rest } = props;
+    const { t } = useLanguage();
+    const label = typeof children === 'string' ? t(children) : children;
     return (
       <button
         ref={ref}
         {...rest}
         className={`btn-primary disabled:cursor-not-allowed ${className}`}
-      />
+      >
+        {label}
+      </button>
     );
   },
 );
 
 export function SecondaryButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  const { className = '', ...rest } = props;
+  const { className = '', children, ...rest } = props;
+  const { t } = useLanguage();
+  const label = typeof children === 'string' ? t(children) : children;
   return (
     <button
       type="button"
       {...rest}
       className={`btn-secondary ${className}`}
-    />
+    >
+      {label}
+    </button>
   );
 }
 

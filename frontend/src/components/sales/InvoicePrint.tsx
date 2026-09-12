@@ -3,6 +3,8 @@ import { formatDateTime, formatMoney } from '../../lib/format';
 import type { BusinessSettings, Invoice } from '../../lib/api';
 import { formatDeveloperCreditForPrint } from '../../config/printCredit';
 import { isPrintFieldEnabled, parseDeveloperConfig } from '../../config/developerPrint';
+import { formatLabel, formatInvoiceTableHeading, type UiLanguage } from '../../i18n/formatLabel';
+import { URDU_PRINT_FONT_LINKS, URDU_PRINT_FONT_STACK, isRtlUiLanguage } from '../../i18n/printFonts';
 import {
   printHtmlDocument,
   RECEIPT_78MM_FALLBACK_HEIGHT_MICRONS,
@@ -21,6 +23,20 @@ function escapeHtml(text: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/** Thermal: URDU → full Urdu; ENGLISH and BOTH (Combined) → full English. */
+function langFromSettings(settings: BusinessSettings): UiLanguage {
+  return settings.uiLanguage === 'URDU' ? 'URDU' : 'ENGLISH';
+}
+
+function L(settings: BusinessSettings, english: string): string {
+  return formatLabel(english, langFromSettings(settings));
+}
+
+/** Item / Qty / Rate / Total / Subtotal — English-only in BOTH mode (thermal fit). */
+function LT(settings: BusinessSettings, english: string): string {
+  return formatInvoiceTableHeading(english, langFromSettings(settings));
 }
 
 /** Centered thermal receipt header — original sale-invoice layout (not report grid header). */
@@ -65,7 +81,7 @@ export function buildSaleReceiptHeaderHtml(
   return parts.length ? `<header class="header">${parts.join('')}</header>` : '';
 }
 
-function paymentLabel(method: string): string {
+function paymentLabel(method: string, settings?: BusinessSettings): string {
   const labels: Record<string, string> = {
     CASH: 'Cash',
     CARD: 'Card',
@@ -74,7 +90,8 @@ function paymentLabel(method: string): string {
     BANK_TRANSFER: 'E-payment',
     UDHAAR: 'Udhaar (credit)',
   };
-  return labels[method] ?? method;
+  const en = labels[method] ?? method;
+  return settings ? L(settings, en) : en;
 }
 
 /** Encode invoice number exactly as stored — used for return scan lookup. */
@@ -162,43 +179,53 @@ export function buildInvoicePrintHtml(
     : '';
 
   const summaryParts: string[] = [
-    `<div class="sum-row"><span>Subtotal</span><span>Rs ${formatMoney(invoice.subtotal)}</span></div>`,
+    `<div class="sum-row"><span>${escapeHtml(LT(settings, 'Subtotal'))}</span><span>Rs ${formatMoney(invoice.subtotal)}</span></div>`,
   ];
   if (invoice.discount > 0) {
     summaryParts.push(
-      `<div class="sum-row"><span>Discount</span><span>- Rs ${formatMoney(invoice.discount)}</span></div>`,
+      `<div class="sum-row"><span>${escapeHtml(L(settings, 'Discount'))}</span><span>- Rs ${formatMoney(invoice.discount)}</span></div>`,
     );
   }
   summaryParts.push(
-    `<div class="sum-row sum-total"><span>Bill total</span><span>Rs ${formatMoney(invoice.totalAmount)}</span></div>`,
+    `<div class="sum-row sum-total"><span>${escapeHtml(L(settings, 'Bill total'))}</span><span>Rs ${formatMoney(invoice.totalAmount)}</span></div>`,
   );
   summaryParts.push(
-    `<div class="sum-row"><span>Amount received</span><span>Rs ${formatMoney(amountReceived)}</span></div>`,
+    `<div class="sum-row"><span>${escapeHtml(L(settings, 'Amount received'))}</span><span>Rs ${formatMoney(amountReceived)}</span></div>`,
   );
   if (changeAmount > 0) {
     summaryParts.push(
-      `<div class="sum-row sum-change"><span>Change due</span><span>Rs ${formatMoney(changeAmount)}</span></div>`,
+      `<div class="sum-row sum-change"><span>${escapeHtml(L(settings, 'Change due'))}</span><span>Rs ${formatMoney(changeAmount)}</span></div>`,
     );
   }
   if ((invoice.udhaarRecoveryApplied ?? 0) > 0) {
     summaryParts.push(
-      `<div class="sum-row"><span>Udhaar recovery</span><span>Rs ${formatMoney(invoice.udhaarRecoveryApplied!)}</span></div>`,
+      `<div class="sum-row"><span>${escapeHtml(L(settings, 'Udhaar recovery'))}</span><span>Rs ${formatMoney(invoice.udhaarRecoveryApplied!)}</span></div>`,
     );
   }
   if (invoice.remainingAmount > 0) {
     summaryParts.push(
-      `<div class="sum-row sum-due"><span>Due (udhaar)</span><span>Rs ${formatMoney(invoice.remainingAmount)}</span></div>`,
+      `<div class="sum-row sum-due"><span>${escapeHtml(L(settings, 'Due (udhaar)'))}</span><span>Rs ${formatMoney(invoice.remainingAmount)}</span></div>`,
     );
   }
   summaryParts.push(
-    `<div class="sum-row"><span>Payment</span><span>${escapeHtml(
+    `<div class="sum-row"><span>${escapeHtml(L(settings, 'Payment'))}</span><span>${escapeHtml(
       invoice.paymentMethod === 'CASH' || invoice.paymentMethod === 'UDHAAR'
-        ? paymentLabel(invoice.paymentMethod)
-        : 'E-payment',
+        ? paymentLabel(invoice.paymentMethod, settings)
+        : L(settings, 'E-payment'),
     )}</span></div>`,
   );
 
   const barcodeMarkup = invoiceBarcodeSvg(invoice.invoiceNumber);
+  const urduRtl = isRtlUiLanguage(settings.uiLanguage);
+  const fontFamily = urduRtl ? URDU_PRINT_FONT_STACK : 'Arial, Helvetica, sans-serif';
+  const bodySize = urduRtl ? '15px' : '13px';
+  const tableSize = urduRtl ? '14px' : '12px';
+  const metaLabelSize = urduRtl ? '12px' : '10px';
+  const metaValueSize = urduRtl ? '14px' : '12.5px';
+  const labelTransform = urduRtl ? 'none' : 'uppercase';
+  const labelTracking = urduRtl ? 'normal' : '0.04em';
+  const htmlLangAttrs = urduRtl ? ' lang="ur" dir="rtl"' : '';
+  const fontLinks = urduRtl ? URDU_PRINT_FONT_LINKS : '';
 
   const body = `
     <div class="invoice">
@@ -210,17 +237,17 @@ export function buildInvoicePrintHtml(
 
       <section class="meta">
         <div class="meta-block">
-          <div class="meta-label">Invoice no.</div>
+          <div class="meta-label">${escapeHtml(L(settings, 'Invoice no.'))}</div>
           <div class="meta-value strong">${escapeHtml(invoice.invoiceNumber)}</div>
         </div>
         <div class="meta-block">
-          <div class="meta-label">Date & time</div>
+          <div class="meta-label">${escapeHtml(L(settings, 'Date & time'))}</div>
           <div class="meta-value">${escapeHtml(formatDateTime(invoice.date))}</div>
         </div>
         ${
           customerLine
             ? `<div class="meta-block">
-          <div class="meta-label">Customer</div>
+          <div class="meta-label">${escapeHtml(L(settings, 'Customer'))}</div>
           <div class="meta-value">${customerLine}</div>
         </div>`
             : ''
@@ -238,10 +265,10 @@ export function buildInvoicePrintHtml(
         </colgroup>
         <thead>
           <tr>
-            <th class="col-item">Item</th>
-            <th class="col-qty">Qty</th>
-            <th class="col-rate">Rate</th>
-            <th class="col-total">Total</th>
+            <th class="col-item">${escapeHtml(LT(settings, 'Item'))}</th>
+            <th class="col-qty">${escapeHtml(LT(settings, 'Qty'))}</th>
+            <th class="col-rate">${escapeHtml(LT(settings, 'Rate'))}</th>
+            <th class="col-total">${escapeHtml(LT(settings, 'Total'))}</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -261,7 +288,7 @@ export function buildInvoicePrintHtml(
       </footer>
 
       <section class="invoice-barcode">
-        <div class="barcode-caption">Scan for return / exchange</div>
+        <div class="barcode-caption">${escapeHtml(L(settings, 'Scan for return / exchange'))}</div>
         <div class="barcode-wrap">${barcodeMarkup}</div>
         <div class="barcode-code">${escapeHtml(invoice.invoiceNumber)}</div>
       </section>
@@ -276,8 +303,8 @@ export function buildInvoicePrintHtml(
   * { box-sizing: border-box; margin: 0; padding: 0; }
   img, svg, table, td, th, div, p, span { max-width: 100%; }
   body {
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 13px;
+    font-family: ${fontFamily};
+    font-size: ${bodySize};
     font-weight: 700;
     color: #000;
     -webkit-print-color-adjust: exact;
@@ -295,11 +322,11 @@ export function buildInvoicePrintHtml(
     margin: 0 auto 6px;
     background: #ffffff;
   }
-  .shop-name { font-size: 18px; font-weight: 800; letter-spacing: 0.02em; line-height: 1.2; word-wrap: break-word; color: #000; }
-  .tagline { font-size: 11px; color: #000; font-weight: 700; margin: 2px 0 4px; }
-  .address { font-size: 11px; color: #000; font-weight: 700; line-height: 1.35; word-wrap: break-word; }
+  .shop-name { font-size: ${urduRtl ? '20px' : '18px'}; font-weight: 800; letter-spacing: ${urduRtl ? 'normal' : '0.02em'}; line-height: 1.35; word-wrap: break-word; color: #000; }
+  .tagline { font-size: ${urduRtl ? '13px' : '11px'}; color: #000; font-weight: 700; margin: 2px 0 4px; }
+  .address { font-size: ${urduRtl ? '13px' : '11px'}; color: #000; font-weight: 700; line-height: 1.45; word-wrap: break-word; }
   .contacts { margin-top: 3px; }
-  .contact { font-size: 11px; color: #000; margin: 1px 0; font-weight: 700; }
+  .contact { font-size: ${urduRtl ? '13px' : '11px'}; color: #000; margin: 1px 0; font-weight: 700; }
   .rule { border: none; border-top: 1.5px dashed #000; margin: 6px 0; height: 0; }
   .meta { display: block; width: 100%; }
   .meta-block {
@@ -313,29 +340,29 @@ export function buildInvoicePrintHtml(
   }
   .meta-label {
     display: block;
-    font-size: 10px;
+    font-size: ${metaLabelSize};
     font-weight: 800;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    letter-spacing: ${labelTracking};
+    text-transform: ${labelTransform};
     color: #000;
     margin: 0 0 2px;
   }
   .meta-value {
     display: block;
-    font-size: 12.5px;
+    font-size: ${metaValueSize};
     font-weight: 700;
     color: #000;
-    line-height: 1.3;
+    line-height: 1.35;
     word-break: break-word;
     overflow-wrap: anywhere;
   }
-  .meta-value.strong { font-size: 15px; font-weight: 800; }
-  .muted { color: #000; font-size: 11px; font-weight: 700; }
+  .meta-value.strong { font-size: ${urduRtl ? '16px' : '15px'}; font-weight: 800; }
+  .muted { color: #000; font-size: ${urduRtl ? '13px' : '11px'}; font-weight: 700; }
   table.items {
     width: 100%;
     border-collapse: collapse;
     table-layout: fixed;
-    font-size: 12px;
+    font-size: ${tableSize};
     font-weight: 700;
   }
   col.c-item { width: 44%; }
@@ -343,7 +370,7 @@ export function buildInvoicePrintHtml(
   col.c-rate { width: 22.5%; }
   col.c-total { width: 22.5%; }
   table.items th {
-    font-size: 12px;
+    font-size: ${tableSize};
     font-weight: 800;
     border-bottom: 2px solid #000;
     padding: 4px 1px 5px;
@@ -354,20 +381,20 @@ export function buildInvoicePrintHtml(
     padding: 4px 1px;
     vertical-align: top;
     border-bottom: 1px dotted #000;
-    font-size: 12px;
+    font-size: ${tableSize};
     font-weight: 700;
     color: #000;
   }
-  .col-item { text-align: left; word-wrap: break-word; overflow-wrap: anywhere; }
+  .col-item { text-align: start; word-wrap: break-word; overflow-wrap: anywhere; }
   .col-qty, .col-rate, .col-total {
-    text-align: right;
+    text-align: end;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
     font-weight: 700;
   }
-  .item-name { font-weight: 700; font-size: 12px; line-height: 1.25; word-break: break-word; overflow-wrap: anywhere; }
-  .variant { color: #000; font-size: 10px; margin-top: 1px; font-weight: 700; }
-  .line-disc { color: #000; font-size: 10px; margin-top: 1px; font-weight: 700; }
+  .item-name { font-weight: 700; font-size: ${tableSize}; line-height: 1.35; word-break: break-word; overflow-wrap: anywhere; }
+  .variant { color: #000; font-size: ${urduRtl ? '12px' : '10px'}; margin-top: 1px; font-weight: 700; }
+  .line-disc { color: #000; font-size: ${urduRtl ? '12px' : '10px'}; margin-top: 1px; font-weight: 700; }
   .summary { padding: 2px 0; width: 100%; font-weight: 700; }
   .sum-row {
     display: flex;
@@ -375,7 +402,7 @@ export function buildInvoicePrintHtml(
     align-items: baseline;
     gap: 4px;
     margin: 3px 0;
-    font-size: 12.5px;
+    font-size: ${urduRtl ? '14px' : '12.5px'};
     font-weight: 700;
     color: #000;
     width: 100%;
@@ -383,28 +410,28 @@ export function buildInvoicePrintHtml(
   .sum-row span:first-child { flex: 1 1 auto; min-width: 0; word-break: break-word; font-weight: 700; }
   .sum-row span:last-child {
     flex: 0 0 auto;
-    text-align: right;
+    text-align: end;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
     font-weight: 700;
   }
   .sum-total {
-    font-size: 15px;
+    font-size: ${urduRtl ? '16px' : '15px'};
     font-weight: 800;
     border-top: 2px solid #000;
     margin-top: 5px;
     padding-top: 5px;
   }
-  .sum-total span:last-child { font-weight: 800; font-size: 15px; }
-  .sum-change { font-weight: 800; font-size: 13px; }
-  .sum-due { font-weight: 800; font-size: 13px; color: #000; }
+  .sum-total span:last-child { font-weight: 800; font-size: ${urduRtl ? '16px' : '15px'}; }
+  .sum-change { font-weight: 800; font-size: ${urduRtl ? '15px' : '13px'}; }
+  .sum-due { font-weight: 800; font-size: ${urduRtl ? '15px' : '13px'}; color: #000; }
   .footer { text-align: center; padding: 4px 0; }
-  .footer-note { font-size: 12px; font-weight: 700; margin: 3px 0 0; word-wrap: break-word; color: #000; }
+  .footer-note { font-size: ${urduRtl ? '14px' : '12px'}; font-weight: 700; margin: 3px 0 0; word-wrap: break-word; color: #000; }
   .policy-rule { border: none; border-top: 1.5px dashed #000; margin: 8px 0 6px; height: 0; }
   .policy {
-    font-size: 15px;
+    font-size: ${urduRtl ? '16px' : '15px'};
     font-weight: 800;
-    line-height: 1.4;
+    line-height: 1.5;
     margin: 0;
     padding: 0;
     word-wrap: break-word;
@@ -419,10 +446,10 @@ export function buildInvoicePrintHtml(
     border-top: 1.5px dashed #000;
   }
   .barcode-caption {
-    font-size: 10px;
+    font-size: ${metaLabelSize};
     font-weight: 800;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    letter-spacing: ${labelTracking};
+    text-transform: ${labelTransform};
     color: #000;
     margin-bottom: 4px;
   }
@@ -455,7 +482,7 @@ export function buildInvoicePrintHtml(
     padding: 4px;
   }
   .credit {
-    font-size: 10px;
+    font-size: ${urduRtl ? '12px' : '10px'};
     font-weight: 700;
     color: #000;
     margin-top: 8px;
@@ -465,7 +492,7 @@ export function buildInvoicePrintHtml(
   `;
 
   if (isA4) {
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Invoice ${escapeHtml(invoice.invoiceNumber)}</title>
+    return `<!DOCTYPE html><html${htmlLangAttrs}><head><meta charset="utf-8"/>${fontLinks}<title>Invoice ${escapeHtml(invoice.invoiceNumber)}</title>
 <style>
   @page { size: A4; margin: 14mm; }
   html, body { margin: 0; padding: 0; background: #fff; }
@@ -479,7 +506,7 @@ export function buildInvoicePrintHtml(
   }
 
   // Dedicated 78mm thermal receipt — height grows with items (no fixed height).
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Invoice ${escapeHtml(invoice.invoiceNumber)}</title>
+  return `<!DOCTYPE html><html${htmlLangAttrs}><head><meta charset="utf-8"/>${fontLinks}<title>Invoice ${escapeHtml(invoice.invoiceNumber)}</title>
 <style>
   @page {
     size: ${RECEIPT_PAGE_WIDTH_MM}mm auto;

@@ -33,6 +33,7 @@ import {
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { api, type DashboardPayload, type DateRangePreset } from '../lib/api';
 import { formatDate, formatMoney } from '../lib/format';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const PRESETS: { value: DateRangePreset; label: string }[] = [
   { value: 'today', label: 'Today' },
@@ -61,7 +62,7 @@ const PAYMENT_COLORS: Record<string, string> = {
   UDHAAR: '#A32D2D',
 };
 
-function paymentLabel(method: string): string {
+function paymentLabel(method: string, t: (english: string) => string): string {
   const labels: Record<string, string> = {
     CASH: 'Cash',
     CARD: 'Card',
@@ -70,7 +71,8 @@ function paymentLabel(method: string): string {
     BANK_TRANSFER: 'Bank Transfer',
     UDHAAR: 'Udhaar',
   };
-  return labels[method] ?? method;
+  const en = labels[method] ?? method;
+  return t(en);
 }
 
 function todayInput() {
@@ -87,6 +89,7 @@ function salesLabel(preset: DateRangePreset): string {
 }
 
 export function DashboardPage() {
+  const { t } = useLanguage();
   const [preset, setPreset] = useState<DateRangePreset>('today');
   const [fromDate, setFromDate] = useState(todayInput());
   const [toDate, setToDate] = useState(todayInput());
@@ -134,19 +137,19 @@ export function DashboardPage() {
     return dash.paymentMethodBreakdown
       .filter((row) => row.totalAmount > 0)
       .map((row) => ({
-        name: paymentLabel(row.paymentMethod),
+        name: paymentLabel(row.paymentMethod, t),
         value: row.totalAmount,
         method: row.paymentMethod,
       }));
-  }, [dash?.paymentMethodBreakdown]);
+  }, [dash?.paymentMethodBreakdown, t]);
 
   return (
     <div className="dashboard-page">
       <section className="dashboard-quick-actions" aria-label="Quick actions">
         <div className="dashboard-quick-actions-inner">
           <div className="dashboard-quick-actions-header">
-            <h1 className="dashboard-quick-actions-title">Quick Actions</h1>
-            <p className="dashboard-quick-actions-subtitle">Shop overview — tap any figure to open its report</p>
+            <h1 className="dashboard-quick-actions-title">{t('Quick Actions')}</h1>
+            <p className="dashboard-quick-actions-subtitle">{t('Shop overview — tap any figure to open its report')}</p>
           </div>
           <div className="dashboard-quick-actions-grid">
             {QUICK_ACTIONS.map((a) => {
@@ -159,7 +162,7 @@ export function DashboardPage() {
                 className={isNewSale ? 'dashboard-quick-action-btn is-primary-action' : 'dashboard-quick-action-btn'}
               >
                 <Icon className={isNewSale ? 'h-5 w-5 shrink-0' : 'h-4 w-4 shrink-0'} aria-hidden />
-                {a.label}
+                {t(a.label)}
               </Link>
             );
           })}
@@ -174,11 +177,11 @@ export function DashboardPage() {
       <section className="dashboard-command" aria-label="Shop performance summary">
         <div className="dashboard-command__head">
           <div className="min-w-0 flex-1">
-            <p className="dashboard-command__period-label">Period</p>
+            <p className="dashboard-command__period-label">{t('Period')}</p>
             <SegmentedControl
               value={preset}
               onChange={(v) => setPreset(v as DateRangePreset)}
-              options={PRESETS.map((p) => ({ value: p.value, label: p.label }))}
+              options={PRESETS.map((p) => ({ value: p.value, label: t(p.label) }))}
               className="dashboard-segmented"
             />
             {dash ? (
@@ -268,24 +271,24 @@ export function DashboardPage() {
         <section className="dashboard-collection" aria-label="Sales collection breakdown">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <p className="dashboard-collection__title">How sales were collected</p>
+              <p className="dashboard-collection__title">{t('How sales were collected')}</p>
               <p className="dashboard-collection__meta">{dash.range.label}</p>
             </div>
             <Link to={`/reports/sales/daily?preset=${preset}`} className="dashboard-collection__link">
-              Open full breakdown
+              {t('Open full breakdown')}
             </Link>
           </div>
           <div className="grid gap-2 sm:grid-cols-3">
             <div className="dashboard-stat-chip dashboard-stat-chip--success">
-              <p className="dashboard-stat-chip__label">Cash</p>
+              <p className="dashboard-stat-chip__label">{t('Cash')}</p>
               <p className="dashboard-stat-chip__value">Rs {formatMoney(dash.salesCollectionBreakdown.cash)}</p>
             </div>
             <div className="dashboard-stat-chip dashboard-stat-chip--accent">
-              <p className="dashboard-stat-chip__label">E-payment</p>
+              <p className="dashboard-stat-chip__label">{t('E-payment')}</p>
               <p className="dashboard-stat-chip__value">Rs {formatMoney(dash.salesCollectionBreakdown.ePayment)}</p>
             </div>
             <div className="dashboard-stat-chip dashboard-stat-chip--warning">
-              <p className="dashboard-stat-chip__label">Still on udhaar</p>
+              <p className="dashboard-stat-chip__label">{t('Still on udhaar')}</p>
               <p className="dashboard-stat-chip__value">Rs {formatMoney(dash.salesCollectionBreakdown.udhaar)}</p>
             </div>
           </div>
@@ -309,7 +312,7 @@ export function DashboardPage() {
           onClick={() => setMoreOpen((v) => !v)}
           aria-expanded={moreOpen}
         >
-          More details
+          {t('More details')}
           {moreOpen ? <ChevronUp className="h-4 w-4 shrink-0 text-textMuted" /> : <ChevronDown className="h-4 w-4 shrink-0 text-textMuted" />}
         </button>
         {moreOpen ? (
@@ -340,7 +343,7 @@ export function DashboardPage() {
 
             {dash ? (
               <Panel className="dashboard-panel mt-4">
-                <p className="dashboard-panel__title">Purchases (separate from sales)</p>
+                <p className="dashboard-panel__title">{t('Purchases (separate from sales)')}</p>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   <ClickableMetricTile label="Today" value={formatMoney(dash.purchases.today)} to="/reports/purchases" size="compact" hideLinkHint />
                   <ClickableMetricTile label="This Month" value={formatMoney(dash.purchases.month)} to="/reports/purchases" size="compact" hideLinkHint />
@@ -352,7 +355,7 @@ export function DashboardPage() {
 
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
               <Panel className="dashboard-panel">
-                <h2 className="dashboard-panel__title">Sales by payment method</h2>
+                <h2 className="dashboard-panel__title">{t('Sales by payment method')}</h2>
                 {paymentChartData.length ? (
                   <>
                     <ResponsiveContainer width="100%" height={220}>
@@ -376,11 +379,11 @@ export function DashboardPage() {
                     </ResponsiveContainer>
                     <div className="mt-3 flex flex-wrap gap-4 border-t border-border pt-3 text-sm">
                       <div>
-                        <p className="text-xs text-textMuted">Total sales</p>
+                        <p className="text-xs text-textMuted">{t('Total sales')}</p>
                         <p className="font-semibold text-textPrimary">Rs {formatMoney(dash?.netSales ?? 0)}</p>
                       </div>
                       <div>
-                        <p className="text-xs text-textMuted">Net profit</p>
+                        <p className="text-xs text-textMuted">{t('Net profit')}</p>
                         <p className={`font-semibold ${dash && dash.netProfit >= 0 ? 'text-success' : 'text-danger'}`}>
                           Rs {formatMoney(dash?.netProfit ?? 0)}
                         </p>
@@ -404,12 +407,12 @@ export function DashboardPage() {
                 ) : loading ? (
                   <LoadingState />
                 ) : (
-                  <p className="text-sm text-textMuted">No sales in selected period.</p>
+                  <p className="text-sm text-textMuted">{t('No sales in selected period.')}</p>
                 )}
               </Panel>
 
               <Panel className="dashboard-panel">
-                <h2 className="dashboard-panel__title">Sales chart</h2>
+                <h2 className="dashboard-panel__title">{t('Sales chart')}</h2>
                 {dash?.salesChart.length ? (
                   <ResponsiveContainer width="100%" height={220}>
                     <BarChart data={dash.salesChart}>
@@ -423,29 +426,29 @@ export function DashboardPage() {
                 ) : loading ? (
                   <LoadingState />
                 ) : (
-                  <p className="text-sm text-textMuted">No sales in selected period.</p>
+                  <p className="text-sm text-textMuted">{t('No sales in selected period.')}</p>
                 )}
               </Panel>
             </div>
 
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
               <Panel className="dashboard-panel">
-                <h2 className="dashboard-panel__title">Top selling products</h2>
+                <h2 className="dashboard-panel__title">{t('Top selling products')}</h2>
                 {dash?.topSellingProducts.length ? (
-                  <table className="app-data-table w-full text-left text-sm">
+                  <table className="app-data-table w-full text-start text-sm">
                     <thead>
                       <tr>
-                        <th className="py-1 pr-2 font-medium">Product</th>
-                        <th className="py-1 pr-2 font-medium">Qty</th>
-                        <th className="py-1 text-right font-medium">Revenue</th>
+                        <th className="py-1 pe-2 font-medium">{t('Product')}</th>
+                        <th className="py-1 pe-2 text-end font-medium">{t('Qty')}</th>
+                        <th className="py-1 text-end font-medium">{t('Revenue')}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {dash.topSellingProducts.map((p) => (
                         <tr key={p.productId}>
-                          <td className="py-1.5 pr-2">{p.name}</td>
-                          <td className="py-1.5 pr-2">{p.quantitySold}</td>
-                          <td className="py-1.5 text-right">{formatMoney(p.revenue)}</td>
+                          <td className="py-1.5 pe-2">{p.name}</td>
+                          <td className="py-1.5 pe-2 text-end tabular-nums">{p.quantitySold}</td>
+                          <td className="py-1.5 text-end tabular-nums">{formatMoney(p.revenue)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -456,7 +459,7 @@ export function DashboardPage() {
               </Panel>
 
               <Panel className="dashboard-panel">
-                <h2 className="dashboard-panel__title">Low stock</h2>
+                <h2 className="dashboard-panel__title">{t('Low stock')}</h2>
                 <p className="mb-2 text-xs text-textMuted">Items at or below the low-stock limit (includes out of stock).</p>
                 {dash?.lowStockProducts.length ? (
                   <ul className="space-y-2 text-sm">
@@ -483,7 +486,7 @@ export function DashboardPage() {
 
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
               <Panel className="dashboard-panel">
-                <h2 className="dashboard-panel__title">Recent sales</h2>
+                <h2 className="dashboard-panel__title">{t('Recent sales')}</h2>
                 {dash?.recentSales.length ? (
                   <ul className="space-y-2 text-sm">
                     {dash.recentSales.map((s) => (
@@ -501,7 +504,7 @@ export function DashboardPage() {
               </Panel>
 
               <Panel className="dashboard-panel">
-                <h2 className="dashboard-panel__title">Recent expenses</h2>
+                <h2 className="dashboard-panel__title">{t('Recent expenses')}</h2>
                 {dash?.recentExpenses.length ? (
                   <ul className="space-y-2 text-sm">
                     {dash.recentExpenses.map((e) => (

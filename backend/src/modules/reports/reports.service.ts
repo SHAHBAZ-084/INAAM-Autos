@@ -104,6 +104,37 @@ async function loadProductsForStockAlerts(search?: string) {
 
 // ─── Sales reports ───────────────────────────────────────────────────────────
 
+type DaySalesBucket = {
+  date: string;
+  invoiceCount: number;
+  returnCount: number;
+  exchangeCount: number;
+  grossSales: number;
+  discounts: number;
+  returns: number;
+  exchangeSales: number;
+  netSales: number;
+  cashReceived: number;
+  grossProfit: number;
+};
+
+function emptyDayBucket(date: string): DaySalesBucket {
+  return {
+    date,
+    invoiceCount: 0,
+    returnCount: 0,
+    exchangeCount: 0,
+    grossSales: 0,
+    discounts: 0,
+    returns: 0,
+    exchangeSales: 0,
+    netSales: 0,
+    cashReceived: 0,
+    grossProfit: 0,
+  };
+}
+
+/** Day buckets aligned with financial summary: invoice lines + exchange lines − returns. */
 export async function reportDailySales(params: {
   fromDate?: string;
   toDate?: string;
@@ -116,49 +147,110 @@ export async function reportDailySales(params: {
   const { page, pageSize } = paginateParams(params.page, params.pageSize);
   const dateCond = dateFilter(range.from, range.to);
 
-  const invoices = await prisma.invoice.findMany({
-    where: {
-      status: InvoiceStatus.ACTIVE,
-      ...(dateCond ? { date: dateCond } : {}),
-    },
-    select: {
-      id: true,
-      invoiceNumber: true,
-      date: true,
-      subtotal: true,
-      discount: true,
-      totalAmount: true,
-      paidAmount: true,
-      remainingAmount: true,
-      paymentMethod: true,
-      customer: { select: { name: true } },
-    },
-    orderBy: { date: 'desc' },
-  });
+  const [invoices, exchanges, returns] = await Promise.all([
+    prisma.invoice.findMany({
+      where: {
+        status: InvoiceStatus.ACTIVE,
+        ...(dateCond ? { date: dateCond } : {}),
+      },
+      select: {
+        date: true,
+        discount: true,
+        paidAmount: true,
+        items: {
+          select: { quantity: true, rate: true, discount: true, total: true, costAtSale: true },
+        },
+      },
+    }),
+    prisma.exchange.findMany({
+      where: dateCond ? { date: dateCond } : {},
+      select: {
+        date: true,
+        paidAmount: true,
+        newItems: {
+          select: { quantity: true, rate: true, discount: true, lineTotal: true, costAtSale: true },
+        },
+      },
+    }),
+    prisma.saleReturn.findMany({
+      where: dateCond ? { date: dateCond } : {},
+      select: {
+        date: true,
+        totalAmount: true,
+        refundAmount: true,
+        items: { select: { costAtReturn: true, lineTotal: true } },
+      },
+    }),
+  ]);
 
-  const byDay = new Map<string, typeof invoices>();
+  const byDay = new Map<string, DaySalesBucket>();
+
   for (const inv of invoices) {
     const key = localDateKey(inv.date);
-    const list = byDay.get(key) ?? [];
-    list.push(inv);
-    byDay.set(key, list);
+    const bucket = byDay.get(key) ?? emptyDayBucket(key);
+    bucket.invoiceCount += 1;
+    for (const item of inv.items) {
+      const qty = item.quantity;
+      const rate = toNumber(item.rate);
+      bucket.grossSales = roundMoney(bucket.grossSales + multiplyMoney(rate, qty));
+      bucket.discounts = roundMoney(bucket.discounts + toNumber(item.discount));
+      bucket.grossProfit = roundMoney(
+        bucket.grossProfit + toNumber(item.total) - multiplyMoney(toNumber(item.costAtSale), qty),
+      );
+    }
+    bucket.discounts = roundMoney(bucket.discounts + toNumber(inv.discount));
+    // Cash taken on sale day (invoice paid may later shrink after returns — still best header signal).
+    bucket.cashReceived = roundMoney(bucket.cashReceived + toNumber(inv.paidAmount));
+    byDay.set(key, bucket);
+  }
+
+  for (const ex of exchanges) {
+    const key = localDateKey(ex.date);
+    const bucket = byDay.get(key) ?? emptyDayBucket(key);
+    bucket.exchangeCount += 1;
+    for (const item of ex.newItems) {
+      const qty = item.quantity;
+      const rate = toNumber(item.rate);
+      const line = toNumber(item.lineTotal);
+      bucket.grossSales = roundMoney(bucket.grossSales + multiplyMoney(rate, qty));
+      bucket.exchangeSales = roundMoney(bucket.exchangeSales + line);
+      bucket.discounts = roundMoney(bucket.discounts + toNumber(item.discount));
+      bucket.grossProfit = roundMoney(
+        bucket.grossProfit + line - multiplyMoney(toNumber(item.costAtSale), qty),
+      );
+    }
+    bucket.cashReceived = roundMoney(bucket.cashReceived + toNumber(ex.paidAmount));
+    byDay.set(key, bucket);
+  }
+
+  for (const ret of returns) {
+    const key = localDateKey(ret.date);
+    const bucket = byDay.get(key) ?? emptyDayBucket(key);
+    bucket.returnCount += 1;
+    const returnValue = toNumber(ret.totalAmount);
+    bucket.returns = roundMoney(bucket.returns + returnValue);
+    // Profit: remove only margin (revenue − cost) of returned products.
+    for (const item of ret.items) {
+      bucket.grossProfit = roundMoney(
+        bucket.grossProfit - (toNumber(item.lineTotal) - toNumber(item.costAtReturn)),
+      );
+    }
+    bucket.cashReceived = roundMoney(bucket.cashReceived - toNumber(ret.refundAmount));
+    byDay.set(key, bucket);
   }
 
   const rows = [...byDay.entries()]
     .sort(([a], [b]) => b.localeCompare(a))
-    .map(([date, invs]) => ({
-      date,
-      invoiceCount: invs.length,
-      grossSales: roundMoney(invs.reduce((s, i) => s + toNumber(i.subtotal) + toNumber(i.discount), 0)),
-      discounts: roundMoney(invs.reduce((s, i) => s + toNumber(i.discount), 0)),
-      netSales: roundMoney(invs.reduce((s, i) => s + toNumber(i.totalAmount), 0)),
-      cashReceived: roundMoney(invs.reduce((s, i) => s + toNumber(i.paidAmount), 0)),
+    .map(([, b]) => ({
+      ...b,
+      netSales: roundMoney(b.grossSales - b.discounts - b.returns),
+      grossProfit: roundMoney(b.grossProfit),
     }));
 
   return paginated(rows, page, pageSize);
 }
 
-/** Product-wise sales by calendar day — for the main Sales report. */
+/** Product-wise sales by calendar day — includes sales, returns, and exchange items. */
 export async function reportDailySalesDetail(params: {
   fromDate?: string;
   toDate?: string;
@@ -168,7 +260,7 @@ export async function reportDailySalesDetail(params: {
   const range = resolveDateRange(preset, params.fromDate, params.toDate);
   const dateCond = dateFilter(range.from, range.to);
 
-  const [invoices, financial, collection] = await Promise.all([
+  const [invoices, exchanges, returns, financial, collection] = await Promise.all([
     prisma.invoice.findMany({
       where: {
         status: InvoiceStatus.ACTIVE,
@@ -176,19 +268,50 @@ export async function reportDailySalesDetail(params: {
       },
       select: {
         date: true,
-        paymentMethod: true,
-        totalAmount: true,
-        paidAmount: true,
-        discount: true,
         items: {
           select: {
             quantity: true,
             rate: true,
             discount: true,
             total: true,
-            costAtSale: true,
             product: { select: { name: true } },
             variant: { select: { size: true, colour: true } },
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    }),
+    prisma.exchange.findMany({
+      where: dateCond ? { date: dateCond } : {},
+      select: {
+        date: true,
+        newItems: {
+          select: {
+            quantity: true,
+            discount: true,
+            lineTotal: true,
+            productId: true,
+            variantId: true,
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    }),
+    prisma.saleReturn.findMany({
+      where: dateCond ? { date: dateCond } : {},
+      select: {
+        date: true,
+        exchange: { select: { id: true } },
+        items: {
+          select: {
+            quantity: true,
+            lineTotal: true,
+            invoiceItem: {
+              select: {
+                product: { select: { name: true } },
+                variant: { select: { size: true, colour: true } },
+              },
+            },
           },
         },
       },
@@ -203,32 +326,115 @@ export async function reportDailySalesDetail(params: {
 
   type ProductAgg = {
     name: string;
+    kind: 'SALE' | 'RETURN' | 'EXCHANGE';
     quantity: number;
     discount: number;
     amount: number;
   };
 
   const byDay = new Map<string, Map<string, ProductAgg>>();
-  for (const inv of invoices) {
-    const day = localDateKey(inv.date);
+
+  function bump(day: string, key: string, patch: Omit<ProductAgg, 'name'> & { name: string }) {
     let products = byDay.get(day);
     if (!products) {
       products = new Map();
       byDay.set(day, products);
     }
+    const cur = products.get(key) ?? {
+      name: patch.name,
+      kind: patch.kind,
+      quantity: 0,
+      discount: 0,
+      amount: 0,
+    };
+    cur.quantity += patch.quantity;
+    cur.discount = roundMoney(cur.discount + patch.discount);
+    cur.amount = roundMoney(cur.amount + patch.amount);
+    products.set(key, cur);
+  }
+
+  for (const inv of invoices) {
+    const day = localDateKey(inv.date);
     for (const item of inv.items) {
       const variant = [item.variant?.size, item.variant?.colour].filter(Boolean).join('/');
       const name = item.product.name + (variant ? ` (${variant})` : '');
-      const cur = products.get(name) ?? { name, quantity: 0, discount: 0, amount: 0 };
-      cur.quantity += item.quantity;
-      cur.discount = roundMoney(cur.discount + toNumber(item.discount));
-      cur.amount = roundMoney(cur.amount + toNumber(item.total));
-      products.set(name, cur);
+      bump(day, `SALE:${name}`, {
+        name,
+        kind: 'SALE',
+        quantity: item.quantity,
+        discount: toNumber(item.discount),
+        amount: toNumber(item.total),
+      });
+    }
+  }
+
+  // Resolve exchange product names
+  const exchangeProductIds = [
+    ...new Set(exchanges.flatMap((e) => e.newItems.map((i) => i.productId))),
+  ];
+  const exchangeVariantIds = [
+    ...new Set(
+      exchanges.flatMap((e) =>
+        e.newItems.map((i) => i.variantId).filter((id): id is number => id != null),
+      ),
+    ),
+  ];
+  const [exProducts, exVariants] = await Promise.all([
+    exchangeProductIds.length
+      ? prisma.product.findMany({
+          where: { id: { in: exchangeProductIds } },
+          select: { id: true, name: true },
+        })
+      : Promise.resolve([]),
+    exchangeVariantIds.length
+      ? prisma.productVariant.findMany({
+          where: { id: { in: exchangeVariantIds } },
+          select: { id: true, size: true, colour: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const exProductById = new Map(exProducts.map((p) => [p.id, p]));
+  const exVariantById = new Map(exVariants.map((v) => [v.id, v]));
+
+  for (const ex of exchanges) {
+    const day = localDateKey(ex.date);
+    for (const item of ex.newItems) {
+      const product = exProductById.get(item.productId);
+      const variant = item.variantId != null ? exVariantById.get(item.variantId) : null;
+      const variantLabel = [variant?.size, variant?.colour].filter(Boolean).join('/');
+      const name = (product?.name ?? `Product #${item.productId}`) + (variantLabel ? ` (${variantLabel})` : '');
+      bump(day, `EXCHANGE:${name}`, {
+        name,
+        kind: 'EXCHANGE',
+        quantity: item.quantity,
+        discount: toNumber(item.discount),
+        amount: toNumber(item.lineTotal),
+      });
+    }
+  }
+
+  for (const ret of returns) {
+    const day = localDateKey(ret.date);
+    const isExchangeReturn = ret.exchange != null;
+    for (const item of ret.items) {
+      const variant = [item.invoiceItem.variant?.size, item.invoiceItem.variant?.colour]
+        .filter(Boolean)
+        .join('/');
+      const baseName = item.invoiceItem.product.name + (variant ? ` (${variant})` : '');
+      const name = isExchangeReturn ? `${baseName} (exch. return)` : `${baseName} (return)`;
+      bump(day, `RETURN:${name}`, {
+        name,
+        kind: 'RETURN',
+        quantity: -item.quantity,
+        discount: 0,
+        amount: -toNumber(item.lineTotal),
+      });
     }
   }
 
   const items: Array<{
     date: string;
+    kind: 'SALE' | 'RETURN' | 'EXCHANGE';
     productName: string;
     quantity: number;
     discount: number;
@@ -236,10 +442,14 @@ export async function reportDailySalesDetail(params: {
   }> = [];
 
   for (const date of [...byDay.keys()].sort((a, b) => b.localeCompare(a))) {
-    const products = [...(byDay.get(date)?.values() ?? [])].sort((a, b) => a.name.localeCompare(b.name));
+    const products = [...(byDay.get(date)?.values() ?? [])].sort((a, b) => {
+      const kindOrder = { SALE: 0, EXCHANGE: 1, RETURN: 2 };
+      return kindOrder[a.kind] - kindOrder[b.kind] || a.name.localeCompare(b.name);
+    });
     for (const p of products) {
       items.push({
         date,
+        kind: p.kind,
         productName: p.name,
         quantity: p.quantity,
         discount: p.discount,
@@ -256,7 +466,9 @@ export async function reportDailySalesDetail(params: {
       cash: collection.cash,
       ePayment: collection.ePayment,
       profit: financial.grossProfit,
+      netProfit: financial.netProfit,
       discount: financial.discounts,
+      returns: financial.saleReturns,
       udhaar: collection.udhaar,
     },
   };
@@ -374,6 +586,100 @@ export async function reportProductProfit(params: {
   }
   rows.sort((a, b) => b.grossProfit - a.grossProfit);
   return { ...paginated(rows, page, pageSize), summary: await getFinancialSummary(preset, params.fromDate, params.toDate) };
+}
+
+/**
+ * Best-selling products for a period.
+ * Optional minSoldQty filters to products with sold qty >= that value (default: all with any sales).
+ */
+export async function reportBestSellingProducts(params: {
+  preset?: DateRangePreset;
+  fromDate?: string;
+  toDate?: string;
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  /** Minimum net sold quantity in the period (inclusive). Default 1 = any sold. */
+  minSoldQty?: number;
+}) {
+  const preset = params.preset ?? 'month';
+  const range = resolveDateRange(preset, params.fromDate, params.toDate);
+  const { page, pageSize } = paginateParams(params.page, params.pageSize);
+  const minSoldQty =
+    params.minSoldQty !== undefined && Number.isFinite(params.minSoldQty)
+      ? Math.max(0, Math.floor(params.minSoldQty))
+      : 1;
+
+  let rows = await getProductWiseProfit(range.from, range.to);
+  rows = rows.filter((r) => r.quantitySold >= minSoldQty);
+
+  if (params.search?.trim()) {
+    const q = params.search.trim().toLowerCase();
+    rows = rows.filter(
+      (r) => r.name.toLowerCase().includes(q) || r.sku.toLowerCase().includes(q),
+    );
+  }
+
+  rows.sort((a, b) => b.quantitySold - a.quantitySold || b.revenue - a.revenue);
+
+  const productIds = rows.map((r) => r.productId);
+  const products = productIds.length
+    ? await prisma.product.findMany({
+        where: { id: { in: productIds } },
+        select: {
+          id: true,
+          currentStock: true,
+          variants: { select: { currentStock: true } },
+        },
+      })
+    : [];
+  const stockById = new Map(
+    products.map((p) => {
+      const variantStock = p.variants.reduce((sum, v) => sum + v.currentStock, 0);
+      const stock = p.variants.length > 0 ? variantStock : p.currentStock;
+      return [p.id, stock] as const;
+    }),
+  );
+
+  const enriched = rows.map((r, index) => ({
+    srNo: index + 1,
+    productId: r.productId,
+    name: r.name,
+    sku: r.sku,
+    quantitySold: r.quantitySold,
+    stockRemaining: stockById.get(r.productId) ?? 0,
+    revenue: r.revenue,
+    profit: r.grossProfit,
+  }));
+
+  const pageSlice = paginated(enriched, page, pageSize);
+  // Keep Sr No continuous across pages
+  const start = (pageSlice.page - 1) * pageSlice.pageSize;
+  pageSlice.items = pageSlice.items.map((item, i) => ({
+    ...item,
+    srNo: start + i + 1,
+  }));
+
+  const totalSoldQty = enriched.reduce((s, r) => s + r.quantitySold, 0);
+  const totalRevenue = roundMoney(enriched.reduce((s, r) => s + r.revenue, 0));
+  const totalProfit = roundMoney(enriched.reduce((s, r) => s + r.profit, 0));
+
+  return {
+    ...pageSlice,
+    summary: {
+      productCount: enriched.length,
+      totalSoldQty,
+      totalRevenue,
+      totalProfit,
+      minSoldQty,
+    },
+    emptyMessage:
+      enriched.length === 0
+        ? minSoldQty > 1
+          ? 'No products sold at or above that quantity in this period.'
+          : 'No sales in this period.'
+        : undefined,
+  };
 }
 
 export async function reportCategoryProfit(params: {
@@ -608,6 +914,7 @@ export async function reportReturnsExchanges(params: {
       netAmount: toNumber(e.netAmount),
     })),
     exchangeTotal,
+    summary: await getFinancialSummary(preset, params.fromDate, params.toDate),
   };
 }
 

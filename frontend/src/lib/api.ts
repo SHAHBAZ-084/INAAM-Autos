@@ -28,6 +28,7 @@ export type BusinessSettings = {
   lowStockLimit: number;
   backupFolderPath: string;
   themeMode: 'light' | 'dark';
+  uiLanguage?: 'ENGLISH' | 'URDU' | 'BOTH';
   primaryColor: string;
   secondaryColor: string;
   logoPath: string | null;
@@ -233,7 +234,7 @@ export const api = {
   getPublicBranding() {
     return request<PublicBranding>('/api/settings/branding');
   },
-  updateSettings(data: Partial<BusinessSettings> & { themeMode?: 'light' | 'dark' }) {
+  updateSettings(data: Partial<BusinessSettings> & { themeMode?: 'light' | 'dark'; uiLanguage?: 'ENGLISH' | 'URDU' | 'BOTH' }) {
     return request<BusinessSettings>('/api/settings', {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -1445,6 +1446,8 @@ export type SaleReturn = {
   id: number;
   invoiceId: number;
   invoiceNumber: string;
+  /** Original sale invoice date (purchase being returned). */
+  originalInvoiceDate?: string;
   date: string;
   totalAmount: number;
   refundAmount: number;
@@ -1471,6 +1474,8 @@ export type ExchangeResult = {
   id: number;
   invoiceId: number;
   invoiceNumber: string;
+  /** Original sale invoice date (purchase being exchanged). */
+  originalInvoiceDate?: string;
   saleReturnId: number;
   date: string;
   returnTotal: number;

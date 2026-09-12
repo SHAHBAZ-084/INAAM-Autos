@@ -45,6 +45,8 @@ describe('identity access (developer edit mode)', () => {
       'developerCreditLine',
       'primaryColor',
       'secondaryColor',
+      'developerConfig',
+      'uiLanguage',
     ]);
   });
 

@@ -56,7 +56,7 @@ export function TrialBalancePage() {
     if (format === 'excel') {
       downloadExcel('trial-balance.xlsx', 'Trial Balance', headers, rows, meta);
     } else {
-      downloadPdf('trial-balance.pdf', title, headers, rows, meta);
+      void downloadPdf('trial-balance.pdf', title, headers, rows, meta);
     }
   }
 

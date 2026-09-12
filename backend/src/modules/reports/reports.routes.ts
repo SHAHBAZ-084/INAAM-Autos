@@ -112,6 +112,26 @@ reportsRouter.get(
 );
 
 reportsRouter.get(
+  '/sales/best-selling',
+  asyncHandler(async (req, res) => {
+    const minRaw = req.query.minSoldQty as string | undefined;
+    const minSoldQty =
+      minRaw !== undefined && minRaw !== '' ? queryInt(minRaw) : undefined;
+    res.json(
+      await reports.reportBestSellingProducts({
+        preset: parsePreset(req.query.preset as string),
+        fromDate: req.query.fromDate as string,
+        toDate: req.query.toDate as string,
+        page: queryInt(req.query.page as string),
+        pageSize: queryInt(req.query.pageSize as string),
+        search: req.query.search as string,
+        minSoldQty,
+      }),
+    );
+  }),
+);
+
+reportsRouter.get(
   '/sales/category-profit',
   asyncHandler(async (req, res) => {
     res.json(

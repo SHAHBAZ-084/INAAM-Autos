@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { ReceiptSize, ThemeMode } from '@prisma/client';
+import { ReceiptSize, ThemeMode, UiLanguage } from '@prisma/client';
 import { z } from 'zod';
 import { requireAuth } from '../../middleware/auth';
 import { asyncHandler, validateBody, AppError } from '../../utils/helpers';
@@ -92,6 +92,7 @@ const updateSchema = z.object({
       if (v === 'dark' || v === ThemeMode.DARK) return ThemeMode.DARK;
       return ThemeMode.LIGHT;
     }),
+  uiLanguage: z.nativeEnum(UiLanguage).optional(),
 });
 
 const passphraseSchema = z.object({

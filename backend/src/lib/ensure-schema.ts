@@ -37,6 +37,11 @@ export async function ensureRequiredSchemaColumns(): Promise<void> {
   );
   // Safety net for upgrades where migrate has not yet added releaseMarker.
   await addColumnIfMissing('BusinessSettings', 'releaseMarker', `"releaseMarker" TEXT`);
+  await addColumnIfMissing(
+    'BusinessSettings',
+    'uiLanguage',
+    `"uiLanguage" TEXT NOT NULL DEFAULT 'ENGLISH'`,
+  );
   await addColumnIfMissing('Product', 'needsVariants', `"needsVariants" BOOLEAN NOT NULL DEFAULT 0`);
   await addColumnIfMissing('Product', 'customFieldsJson', `"customFieldsJson" TEXT NOT NULL DEFAULT '{}'`);
   await prisma.$executeRawUnsafe(`

@@ -98,6 +98,12 @@ export function ReportsHubPage() {
           primary: true,
           tone: 'gold',
         },
+        {
+          label: 'Best Selling Products',
+          to: '/reports/sales/best-selling',
+          description: 'Top products by sold qty — stock left, revenue, and profit',
+          tone: 'green',
+        },
         { label: 'Current Stock', to: '/reports/stock/current', description: 'What you have on hand', tone: 'teal' },
         { label: 'Low Stock', to: '/reports/stock/low', description: 'Items that need restocking', tone: 'rose' },
         { label: 'Purchases', to: '/reports/purchases', description: 'Stock you bought from suppliers', tone: 'amber' },

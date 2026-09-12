@@ -16,6 +16,7 @@ import {
 import { formatDate, formatDateTime, formatMoney } from '../../lib/format';
 import { confirmAction } from '../../lib/confirmAction';
 import { shortcutLabel } from '../../lib/shortcuts';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { Printer, Trash2 } from 'lucide-react';
 import {
   DangerButton,
@@ -29,6 +30,7 @@ import {
   SecondaryButton,
   TextInput,
 } from '../../components/ui/PageShell';
+import { RomanUrduInput } from '../../components/ui/RomanUrduInput';
 import { HubCloseButton } from '../../components/ui/HubCloseButton';
 import { PaymentMethodFields, toApiPaymentMethod, type SimplePayKind } from '../../components/ui/PaymentMethodFields';
 import { BarcodeScanField } from '../products/BarcodeScanPage';
@@ -125,6 +127,7 @@ function productToCartLine(product: Product, variantId?: number): CartLine | nul
 
 export function NewSalePage() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [cart, setCart] = useState<CartLine[]>([]);
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<Product[]>([]);
@@ -397,7 +400,7 @@ export function NewSalePage() {
             <SecondaryButton type="button">Recent invoices</SecondaryButton>
           </Link>
           <SecondaryButton type="button" onClick={clearBill}>
-            {shortcutLabel('Clear bill', 'F5')}
+            {shortcutLabel(t('Clear bill'), 'F5')}
           </SecondaryButton>
         </div>
       }
@@ -463,19 +466,19 @@ export function NewSalePage() {
           </Panel>
 
           <Panel>
-            <h2 className="mb-3 text-lg font-semibold">Cart</h2>
+            <h2 className="mb-3 text-lg font-semibold">{t('Cart')}</h2>
             {cart.length === 0 ? (
-              <p className="text-sm text-textSecondary">Scan or search to add items.</p>
+              <p className="text-sm text-textSecondary">{t('Scan or search to add items.')}</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-left text-textSecondary">
-                      <th className="px-2 py-2">Item</th>
-                      <th className="px-2 py-2 text-right">Qty</th>
-                      <th className="px-2 py-2 text-right">Rate</th>
-                      <th className="px-2 py-2 text-right">Disc</th>
-                      <th className="px-2 py-2 text-right">Total</th>
+                      <th className="px-2 py-2">{t('Item')}</th>
+                      <th className="px-2 py-2 text-right">{t('Qty')}</th>
+                      <th className="px-2 py-2 text-right">{t('Rate')}</th>
+                      <th className="px-2 py-2 text-right">{t('Disc')}</th>
+                      <th className="px-2 py-2 text-right">{t('Total')}</th>
                       <th className="px-2 py-2" />
                     </tr>
                   </thead>
@@ -668,7 +671,7 @@ export function NewSalePage() {
           <form ref={checkoutFormRef} className="space-y-4" onSubmit={completeSale}>
             <div className="space-y-1 text-sm">
               <div className="flex justify-between">
-                <span>Subtotal</span>
+                <span>{t('Subtotal')}</span>
                 <span>Rs {formatMoney(subtotal)}</span>
               </div>
               <div>
@@ -682,7 +685,7 @@ export function NewSalePage() {
                 />
               </div>
               <div className="flex justify-between text-lg font-semibold">
-                <span>Total</span>
+                <span>{t('Total')}</span>
                 <span>Rs {formatMoney(total)}</span>
               </div>
             </div>
@@ -728,10 +731,10 @@ export function NewSalePage() {
               </select>
               {customerId === '__new__' ? (
                 <div className="grid gap-2">
-                  <TextInput
+                  <RomanUrduInput
                     placeholder="Customer name"
                     value={newCustomerName}
-                    onChange={(e) => setNewCustomerName(e.target.value)}
+                    onValueChange={setNewCustomerName}
                     required
                   />
                   <TextInput
@@ -780,18 +783,18 @@ export function NewSalePage() {
                   <span className="font-medium">Rs {formatMoney(total)}</span>
                 </div>
                 <div className="mt-1 flex justify-between gap-3">
-                  <span className="text-textSecondary">Amount received</span>
+                  <span className="text-textSecondary">{t('Amount received')}</span>
                   <span className="font-medium">Rs {formatMoney(received)}</span>
                 </div>
                 {recoveryRequested > 0 ? (
                   <div className="mt-1 flex justify-between gap-3 text-success">
-                    <span>Udhaar recovery</span>
+                    <span>{t('Udhaar recovery')}</span>
                     <span className="font-medium">Rs {formatMoney(recoveryRequested)}</span>
                   </div>
                 ) : null}
                 {change > 0 ? (
                   <div className="mt-1 flex justify-between gap-3 border-t border-border pt-1 font-semibold text-textPrimary">
-                    <span>Change due</span>
+                    <span>{t('Change due')}</span>
                     <span>Rs {formatMoney(change)}</span>
                   </div>
                 ) : null}
@@ -801,7 +804,7 @@ export function NewSalePage() {
             {error ? <Feedback variant="error">{error}</Feedback> : null}
 
             <PrimaryButton type="submit" disabled={saving || cart.length === 0 || stockErrors.length > 0}>
-              {saving ? 'Processing…' : shortcutLabel('Complete Sale', 'F9')}
+              {saving ? t('Processing…') : shortcutLabel(t('Complete Sale'), 'F9')}
             </PrimaryButton>
           </form>
         </Panel>
@@ -810,13 +813,13 @@ export function NewSalePage() {
       {completedInvoice && settings ? (
         <div data-page-modal="open" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <Panel className="max-h-[90vh] w-full max-w-lg overflow-y-auto">
-            <h2 className="text-lg font-semibold">Sale complete</h2>
+            <h2 className="text-lg font-semibold">{t('Sale complete')}</h2>
             <p className="mt-1 text-sm text-textSecondary">
-              Invoice {completedInvoice.invoiceNumber} · Bill Rs {formatMoney(completedInvoice.totalAmount)}
+              {t('Invoice')} {completedInvoice.invoiceNumber} · {t('Bill total')} Rs {formatMoney(completedInvoice.totalAmount)}
             </p>
             {(completedInvoice.changeAmount ?? 0) > 0 ? (
               <p className="mt-2 text-sm font-semibold text-textPrimary">
-                Change due: Rs {formatMoney(completedInvoice.changeAmount!)}
+                {t('Change due')}: Rs {formatMoney(completedInvoice.changeAmount!)}
               </p>
             ) : null}
             <div className="mt-4 flex flex-wrap gap-2">
@@ -826,7 +829,7 @@ export function NewSalePage() {
                 onClick={() => void handlePrintInvoice(completedInvoice)}
               >
                 <Printer className="mr-1.5 inline h-4 w-4" aria-hidden />
-                {printing ? 'Printing…' : shortcutLabel('Print Invoice', 'F10')}
+                {printing ? t('Printing…') : shortcutLabel(t('Print Invoice'), 'F10')}
               </PrimaryButton>
               <SecondaryButton
                 type="button"
@@ -872,6 +875,7 @@ function invoiceActivityLabel(inv: Invoice) {
 }
 
 export function InvoicesListPage() {
+  const { t } = useLanguage();
   const [result, setResult] = useState<Awaited<ReturnType<typeof api.listInvoices>> | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -927,7 +931,7 @@ export function InvoicesListPage() {
             <TextInput
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Invoice #, customer, phone…"
+              placeholder={t('Invoice #, customer, phone…')}
             />
           </div>
           <div>
@@ -977,18 +981,18 @@ export function InvoicesListPage() {
           </Feedback>
         ) : null}
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
+          <table className="app-data-table min-w-full text-start text-sm">
             <thead>
-              <tr className="border-b border-border text-left text-textSecondary">
-                <th className="px-2 py-2">Invoice</th>
-                <th className="px-2 py-2">Date</th>
-                <th className="px-2 py-2">Customer</th>
-                <th className="px-2 py-2">Type</th>
-                <th className="px-2 py-2 text-right">Sold</th>
-                <th className="px-2 py-2 text-right">Returned</th>
-                <th className="px-2 py-2 text-right">Net</th>
-                <th className="px-2 py-2">Status</th>
-                <th className="px-2 py-2 text-right">Actions</th>
+              <tr className="border-b border-border text-start text-textSecondary">
+                <th className="px-2 py-2">{t('Invoice')}</th>
+                <th className="px-2 py-2">{t('Date')}</th>
+                <th className="px-2 py-2">{t('Customer')}</th>
+                <th className="px-2 py-2">{t('Type')}</th>
+                <th className="px-2 py-2 text-end">{t('Sold')}</th>
+                <th className="px-2 py-2 text-end">{t('Returned')}</th>
+                <th className="px-2 py-2 text-end">{t('Net')}</th>
+                <th className="px-2 py-2">{t('Status')}</th>
+                <th className="px-2 py-2 text-end">{t('Actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -1000,17 +1004,17 @@ export function InvoicesListPage() {
                     </Link>
                   </td>
                   <td className="px-2 py-2">{formatDate(inv.date)}</td>
-                  <td className="px-2 py-2">{inv.customer?.name ?? 'Walk-in'}</td>
+                  <td className="px-2 py-2">{inv.customer?.name ?? t('Walk-in')}</td>
                   <td className="px-2 py-2">{inv.paymentMethod}</td>
-                  <td className="px-2 py-2 text-right">{formatMoney(inv.totalAmount)}</td>
-                  <td className="px-2 py-2 text-right">
+                  <td className="px-2 py-2 text-end tabular-nums">{formatMoney(inv.totalAmount)}</td>
+                  <td className="px-2 py-2 text-end tabular-nums">
                     {(inv.returnedAmount ?? 0) > 0 ? formatMoney(inv.returnedAmount ?? 0) : '—'}
                   </td>
-                  <td className="px-2 py-2 text-right">
+                  <td className="px-2 py-2 text-end tabular-nums">
                     {formatMoney(inv.netAfterReturns ?? inv.totalAmount)}
                   </td>
-                  <td className="px-2 py-2">{invoiceActivityLabel(inv)}</td>
-                  <td className="px-2 py-2 text-right">
+                  <td className="px-2 py-2">{t(invoiceActivityLabel(inv))}</td>
+                  <td className="px-2 py-2 text-end">
                     <button
                       type="button"
                       className="text-xs font-semibold text-danger hover:underline disabled:opacity-50"
@@ -1088,6 +1092,7 @@ export function InvoicesListPage() {
 }
 
 export function InvoiceDetailPage() {
+  const { t } = useLanguage();
   const params = useParams();
   const navigate = useNavigate();
   const id = Number(params.id);
@@ -1178,7 +1183,7 @@ export function InvoiceDetailPage() {
   return (
     <PageShell
       title={invoice.invoiceNumber}
-      subtitle={`${formatDateTime(invoice.date)} · ${invoiceActivityLabel(invoice)}`}
+      subtitle={`${formatDateTime(invoice.date)} · ${t(invoiceActivityLabel(invoice))}`}
       actions={
         <div className="flex flex-wrap gap-2">
           <HubCloseButton to="/sales/list" label="Close" />

@@ -16,6 +16,7 @@ import { formatDate, formatMoney, formatStockMovementType } from '../../lib/form
 import { confirmAction } from '../../lib/confirmAction';
 import { Plus, Printer, Trash2 } from 'lucide-react';
 import { DangerButton, Feedback, FieldLabel, GhostButton, IconButton, LoadingState, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
+import { RomanUrduInput } from '../../components/ui/RomanUrduInput';
 
 type VariantDraft = ProductVariantInput & {
   key: string;
@@ -1038,7 +1039,7 @@ export function ProductFormPage({ mode }: { mode: 'add' | 'edit' }) {
           <form className="space-y-4" onSubmit={onSubmit}>
             <div>
               <FieldLabel>Product name</FieldLabel>
-              <TextInput value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
+              <RomanUrduInput value={name} onValueChange={setName} required autoFocus />
             </div>
 
             <div>

@@ -1,10 +1,12 @@
-import { formatDate, formatMoney } from '../../lib/format';
+import { formatDate, formatDateTime, formatMoney } from '../../lib/format';
 import { formatDeveloperCreditForPrint } from '../../config/printCredit';
 import type { BusinessSettings, ExchangeResult, SaleReturn } from '../../lib/api';
 import { resolveLogoDataUrl } from '../../lib/electronPrint';
 import { buildSaleReceiptHeaderHtml } from './InvoicePrint';
 import { parseDeveloperConfig } from '../../config/developerPrint';
 import { RECEIPT_PAGE_WIDTH_MM, RECEIPT_CONTENT_WIDTH_MM } from './InvoicePrint';
+import { formatLabel, formatInvoiceTableHeading, type UiLanguage } from '../../i18n/formatLabel';
+import { URDU_PRINT_FONT_LINKS, URDU_PRINT_FONT_STACK, isRtlUiLanguage } from '../../i18n/printFonts';
 
 function escapeHtml(text: string): string {
   return text
@@ -14,10 +16,23 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function conditionLabel(c: string) {
-  if (c === 'GOOD') return 'Good';
-  if (c === 'DAMAGED') return 'Damaged';
-  return 'Other';
+/** Thermal: URDU → full Urdu; ENGLISH and BOTH (Combined) → full English. */
+function langFromSettings(settings: BusinessSettings): UiLanguage {
+  return settings.uiLanguage === 'URDU' ? 'URDU' : 'ENGLISH';
+}
+
+function L(settings: BusinessSettings, english: string): string {
+  return formatLabel(english, langFromSettings(settings));
+}
+
+function LT(settings: BusinessSettings, english: string): string {
+  return formatInvoiceTableHeading(english, langFromSettings(settings));
+}
+
+function conditionLabel(c: string, settings: BusinessSettings) {
+  if (c === 'GOOD') return L(settings, 'Good');
+  if (c === 'DAMAGED') return L(settings, 'Damaged');
+  return L(settings, 'Other');
 }
 
 function itemLabel(item: {
@@ -38,6 +53,8 @@ function itemLabel(item: {
 
 export type BuildReturnReceiptHtmlOptions = {
   logoSrc?: string | null;
+  /** Fallback when API did not include originalInvoiceDate. */
+  originalInvoiceDate?: string | null;
 };
 
 export function buildReturnReceiptHtml(
@@ -49,13 +66,17 @@ export function buildReturnReceiptHtml(
   const isExchange = kind === 'exchange';
   const exchange = isExchange ? (data as ExchangeResult) : null;
   const saleReturn = isExchange ? null : (data as SaleReturn);
-  const title = isExchange ? 'Exchange Receipt' : 'Return Receipt';
+  const title = isExchange ? L(settings, 'Exchange Receipt') : L(settings, 'Return Receipt');
   const invoiceNumber = isExchange ? exchange!.invoiceNumber : saleReturn!.invoiceNumber;
+
+  const originalDateRaw =
+    data.originalInvoiceDate ?? options.originalInvoiceDate ?? null;
+  const processedDateRaw = data.createdAt || data.date || new Date().toISOString();
 
   const returnRows = (isExchange ? exchange!.returnItems : saleReturn!.items)
     .map((item) => {
       const { name, variantHtml } = itemLabel(item);
-      const cond = 'condition' in item ? conditionLabel(item.condition) : 'Good';
+      const cond = 'condition' in item ? conditionLabel(item.condition, settings) : L(settings, 'Good');
       return `<tr>
         <td class="col-item"><div class="item-name">${escapeHtml(name)}</div>${variantHtml}</td>
         <td class="col-qty">${item.quantity}</td>
@@ -73,27 +94,53 @@ export function buildReturnReceiptHtml(
             return `<tr>
         <td class="col-item"><div class="item-name">${escapeHtml(name)}</div>${variantHtml}</td>
         <td class="col-qty">${item.quantity}</td>
+        <td class="col-rate">${formatMoney(item.rate)}</td>
         <td class="col-total">${formatMoney(item.lineTotal)}</td>
       </tr>`;
           })
           .join('')
       : '';
 
-  const summary = isExchange
-    ? `<p class="row"><span>Returned value</span><span>Rs ${formatMoney(exchange!.returnTotal)}</span></p>
-       <p class="row"><span>New items</span><span>Rs ${formatMoney(exchange!.newSaleTotal)}</span></p>
-       <p class="row total"><span>Net ${exchange!.netAmount >= 0 ? 'due' : 'refund'}</span><span>Rs ${formatMoney(Math.abs(exchange!.netAmount))}</span></p>`
-    : `<p class="row total"><span>Refund</span><span>Rs ${formatMoney(saleReturn!.refundAmount)}</span></p>`;
+  let summary: string;
+  if (isExchange && exchange) {
+    const net = exchange.netAmount;
+    const netLabel = net >= 0 ? L(settings, 'Customer pays') : L(settings, 'Refund to customer');
+    const paidOrRefunded =
+      net >= 0
+        ? `<p class="row"><span>${escapeHtml(L(settings, 'Amount received'))}</span><span>Rs ${formatMoney(exchange.paidAmount)}</span></p>`
+        : `<p class="row"><span>${escapeHtml(L(settings, 'Amount refunded'))}</span><span>Rs ${formatMoney(exchange.refundedAmount)}</span></p>`;
+    summary = `
+      <div class="rule"></div>
+      <p class="row"><span>${escapeHtml(L(settings, 'Returned value'))}</span><span>Rs ${formatMoney(exchange.returnTotal)}</span></p>
+      <p class="row"><span>${escapeHtml(L(settings, 'Exchange items'))}</span><span>Rs ${formatMoney(exchange.newSaleTotal)}</span></p>
+      <p class="row total"><span>${escapeHtml(netLabel)}</span><span>Rs ${formatMoney(Math.abs(net))}</span></p>
+      ${paidOrRefunded}`;
+  } else {
+    summary = `
+      <div class="rule"></div>
+      <p class="row"><span>${escapeHtml(L(settings, 'Returned value'))}</span><span>Rs ${formatMoney(saleReturn!.totalAmount)}</span></p>
+      <p class="row total"><span>${escapeHtml(L(settings, 'Refund'))}</span><span>Rs ${formatMoney(saleReturn!.refundAmount)}</span></p>`;
+  }
 
   const logoSrc = options.logoSrc ?? settings.logoUrl;
   const printConfig = parseDeveloperConfig(settings.developerConfig);
   const headerHtml = buildSaleReceiptHeaderHtml(settings, logoSrc, printConfig);
+  const processedLabel = isExchange
+    ? L(settings, 'Exchange processed:')
+    : L(settings, 'Return processed:');
 
-  return `<!DOCTYPE html><html><head><title>${title}</title>
+  const urduRtl = isRtlUiLanguage(settings.uiLanguage);
+  const fontFamily = urduRtl ? URDU_PRINT_FONT_STACK : 'Arial, sans-serif';
+  const bodySize = urduRtl ? '15px' : '13px';
+  const tableSize = urduRtl ? '14px' : '12px';
+  const htmlLangAttrs = urduRtl ? ' lang="ur" dir="rtl"' : '';
+  const fontLinks = urduRtl ? URDU_PRINT_FONT_LINKS : '';
+
+  return `<!DOCTYPE html><html${htmlLangAttrs}><head><meta charset="utf-8"/>${fontLinks}<title>${escapeHtml(title)}</title>
 <style>
   * { box-sizing: border-box; }
   @page { size: ${RECEIPT_PAGE_WIDTH_MM}mm auto; margin: 0; }
-  body { font-family: Arial, sans-serif; font-size: 13px; color: #000; margin: 0 auto; width: ${RECEIPT_CONTENT_WIDTH_MM}mm; max-width: ${RECEIPT_CONTENT_WIDTH_MM}mm; overflow-x: hidden; font-weight: 700; padding: 1.5mm 0 2mm; }
+  body { font-family: ${fontFamily}; font-size: ${bodySize}; color: #000; margin: 0 auto; width: ${RECEIPT_CONTENT_WIDTH_MM}mm; max-width: ${RECEIPT_CONTENT_WIDTH_MM}mm; overflow-x: hidden; font-weight: 700; padding: 1.5mm 0 2mm; }
   .logo {
     display: block;
     max-height: 75px;
@@ -105,24 +152,24 @@ export function buildReturnReceiptHtml(
     background: #ffffff;
   }
   .header { text-align: center; padding: 0 0 2px; }
-  .shop-name { font-size: 18px; font-weight: 800; letter-spacing: 0.02em; line-height: 1.2; word-wrap: break-word; color: #000; }
-  .address { font-size: 11px; color: #000; font-weight: 700; line-height: 1.35; word-wrap: break-word; }
+  .shop-name { font-size: ${urduRtl ? '20px' : '18px'}; font-weight: 800; letter-spacing: ${urduRtl ? 'normal' : '0.02em'}; line-height: 1.35; word-wrap: break-word; color: #000; }
+  .address { font-size: ${urduRtl ? '13px' : '11px'}; color: #000; font-weight: 700; line-height: 1.45; word-wrap: break-word; }
   .contacts { margin-top: 3px; }
-  .contact { font-size: 11px; color: #000; margin: 1px 0; font-weight: 700; }
+  .contact { font-size: ${urduRtl ? '13px' : '11px'}; color: #000; margin: 1px 0; font-weight: 700; }
   .rule { border: none; border-top: 1.5px dashed #000; margin: 6px 0; height: 0; }
-  h1 { font-size: 18px; font-weight: 800; text-align: center; margin: 0 0 4px; word-wrap: break-word; color: #000; }
-  h2 { font-size: 14px; font-weight: 800; margin: 8px 0 4px; color: #000; }
-  .meta { text-align: center; font-size: 11px; font-weight: 700; color: #000; margin: 2px 0; word-wrap: break-word; }
+  h1 { font-size: ${urduRtl ? '18px' : '18px'}; font-weight: 800; text-align: center; margin: 0 0 4px; word-wrap: break-word; color: #000; }
+  h2 { font-size: ${urduRtl ? '15px' : '14px'}; font-weight: 800; margin: 8px 0 4px; color: #000; }
+  .meta { text-align: center; font-size: ${urduRtl ? '13px' : '11px'}; font-weight: 700; color: #000; margin: 2px 0; word-wrap: break-word; }
   table.items {
     width: 100%;
     border-collapse: collapse;
     margin: 4px 0 8px;
-    font-size: 12px;
+    font-size: ${tableSize};
     font-weight: 700;
     table-layout: fixed;
   }
   table.items th {
-    font-size: 12px;
+    font-size: ${tableSize};
     font-weight: 800;
     border-bottom: 2px solid #000;
     padding: 4px 2px 5px;
@@ -133,7 +180,7 @@ export function buildReturnReceiptHtml(
     padding: 4px 2px;
     vertical-align: top;
     border-bottom: 1px dotted #000;
-    font-size: 12px;
+    font-size: ${tableSize};
     font-weight: 700;
     color: #000;
   }
@@ -141,12 +188,13 @@ export function buildReturnReceiptHtml(
   col.c-qty { width: 12%; }
   col.c-cond { width: 18%; }
   col.c-total { width: 24%; }
-  col.c-item-3 { width: 58%; }
-  col.c-qty-3 { width: 14%; }
-  col.c-total-3 { width: 28%; }
-  .col-item { text-align: left; word-wrap: break-word; overflow-wrap: anywhere; }
-  .col-qty, .col-total {
-    text-align: right;
+  col.c-item-4 { width: 44%; }
+  col.c-qty-4 { width: 12%; }
+  col.c-rate-4 { width: 20%; }
+  col.c-total-4 { width: 24%; }
+  .col-item { text-align: start; word-wrap: break-word; overflow-wrap: anywhere; }
+  .col-qty, .col-total, .col-rate {
+    text-align: end;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
   }
@@ -155,29 +203,35 @@ export function buildReturnReceiptHtml(
     white-space: nowrap;
   }
   .item-name { font-weight: 800; }
-  .variant { font-size: 10px; font-weight: 700; margin-top: 1px; }
-  .row { display: flex; justify-content: space-between; margin: 3px 0; gap: 4px; font-size: 12.5px; font-weight: 700; color: #000; }
-  .total { font-weight: 800; font-size: 15px; }
-  .footer { text-align: center; font-size: 11.5px; font-weight: 700; color: #000; margin-top: 10px; word-wrap: break-word; }
-  .credit { text-align: center; font-size: 10px; font-weight: 700; color: #000; margin-top: 8px; }
+  .variant { font-size: ${urduRtl ? '12px' : '10px'}; font-weight: 700; margin-top: 1px; }
+  .row { display: flex; justify-content: space-between; margin: 3px 0; gap: 4px; font-size: ${urduRtl ? '14px' : '12.5px'}; font-weight: 700; color: #000; }
+  .row span:last-child { text-align: end; white-space: nowrap; }
+  .total { font-weight: 800; font-size: ${urduRtl ? '16px' : '15px'}; }
+  .footer { text-align: center; font-size: ${urduRtl ? '13px' : '11.5px'}; font-weight: 700; color: #000; margin-top: 10px; word-wrap: break-word; }
+  .credit { text-align: center; font-size: ${urduRtl ? '12px' : '10px'}; font-weight: 700; color: #000; margin-top: 8px; }
 </style></head><body>
   ${headerHtml}
   <div class="rule"></div>
   <h1>${escapeHtml(title)}</h1>
-  <p class="meta">Generated: ${escapeHtml(formatDate(data.date))}</p>
-  <p class="meta">Invoice: ${escapeHtml(invoiceNumber)} · ${formatDate(data.date)}</p>
-  <h2>Returned items</h2>
+  <p class="meta">${escapeHtml(L(settings, 'Invoice:'))} ${escapeHtml(invoiceNumber)}</p>
+  ${
+    originalDateRaw
+      ? `<p class="meta">${escapeHtml(L(settings, 'Original sale:'))} ${escapeHtml(formatDate(originalDateRaw))}</p>`
+      : ''
+  }
+  <p class="meta">${escapeHtml(processedLabel)} ${escapeHtml(formatDateTime(processedDateRaw))}</p>
+  <h2>${escapeHtml(L(settings, 'Returned items'))}</h2>
   <table class="items">
     <colgroup><col class="c-item" /><col class="c-qty" /><col class="c-cond" /><col class="c-total" /></colgroup>
-    <thead><tr><th class="col-item">Item</th><th class="col-qty">Qty</th><th class="col-cond">Cond.</th><th class="col-total">Total</th></tr></thead>
+    <thead><tr><th class="col-item">${escapeHtml(LT(settings, 'Item'))}</th><th class="col-qty">${escapeHtml(LT(settings, 'Qty'))}</th><th class="col-cond">${escapeHtml(L(settings, 'Cond.'))}</th><th class="col-total">${escapeHtml(LT(settings, 'Total'))}</th></tr></thead>
     <tbody>${returnRows}</tbody>
   </table>
   ${
     newRows
-      ? `<h2>New items</h2>
+      ? `<h2>${escapeHtml(L(settings, 'Exchange items'))}</h2>
   <table class="items">
-    <colgroup><col class="c-item-3" /><col class="c-qty-3" /><col class="c-total-3" /></colgroup>
-    <thead><tr><th class="col-item">Item</th><th class="col-qty">Qty</th><th class="col-total">Total</th></tr></thead>
+    <colgroup><col class="c-item-4" /><col class="c-qty-4" /><col class="c-rate-4" /><col class="c-total-4" /></colgroup>
+    <thead><tr><th class="col-item">${escapeHtml(LT(settings, 'Item'))}</th><th class="col-qty">${escapeHtml(LT(settings, 'Qty'))}</th><th class="col-rate">${escapeHtml(LT(settings, 'Rate'))}</th><th class="col-total">${escapeHtml(LT(settings, 'Total'))}</th></tr></thead>
     <tbody>${newRows}</tbody>
   </table>`
       : ''

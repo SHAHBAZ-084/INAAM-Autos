@@ -15,6 +15,7 @@ export const PROTECTED_BUSINESS_IDENTITY_FIELDS = [
   'primaryColor',
   'secondaryColor',
   'developerConfig',
+  'uiLanguage',
 ] as const satisfies readonly (keyof BusinessSettingsUpdateInput)[];
 
 export type ProtectedBusinessIdentityField = (typeof PROTECTED_BUSINESS_IDENTITY_FIELDS)[number];

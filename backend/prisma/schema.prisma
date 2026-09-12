@@ -60,6 +60,12 @@ enum ThemeMode {
   DARK
 }
 
+enum UiLanguage {
+  ENGLISH
+  URDU
+  BOTH
+}
+
 model User {
   id           Int      @id @default(autoincrement())
   username     String   @unique
@@ -756,6 +762,8 @@ model BusinessSettings {
   lowStockLimit     Int         @default(5)
   backupFolderPath  String      @default("")
   themeMode         ThemeMode   @default(DARK)
+  /// UI language: ENGLISH | URDU | BOTH (English with Urdu in brackets).
+  uiLanguage        UiLanguage  @default(ENGLISH)
   /// Chrome / nav surface. Default near-black.
   primaryColor      String      @default("#0A0A0A")
   /// Brand accent (buttons, highlights). Default red.

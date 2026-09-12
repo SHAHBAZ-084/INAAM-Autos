@@ -1,7 +1,12 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import html2canvas from 'html2canvas';
 import * as XLSX from 'xlsx';
-import { formatMoney } from './format';
+import { formatDateTime, formatMoney } from './format';
+import {
+  URDU_PRINT_FONT_STACK,
+  containsArabicScript,
+} from '../i18n/printFonts';
 
 export type ReportExportMeta = {
   businessName?: string;
@@ -66,8 +71,199 @@ function buildHeaderLines(title: string, meta?: ReportExportMeta): string[] {
   if (meta?.address?.trim()) lines.push(meta.address.trim());
   lines.push(title);
   if (meta?.dateRange?.trim()) lines.push(`Period: ${meta.dateRange.trim()}`);
-  lines.push(`Generated: ${meta?.generatedAt ?? new Date().toLocaleString()}`);
+  lines.push(`Generated: ${meta?.generatedAt ?? formatDateTime(new Date())}`);
   return lines;
+}
+
+function exportTextHasArabic(
+  title: string,
+  headers: string[],
+  rows: (string | number)[][],
+  meta?: ReportExportMeta,
+): boolean {
+  const parts: string[] = [title, ...headers];
+  if (meta?.businessName) parts.push(meta.businessName);
+  if (meta?.address) parts.push(meta.address);
+  if (meta?.phone) parts.push(meta.phone);
+  if (meta?.dateRange) parts.push(meta.dateRange);
+  if (meta?.summaryStats) {
+    for (const s of meta.summaryStats) {
+      parts.push(s.label, s.value);
+    }
+  }
+  for (const row of rows) {
+    for (const cell of row) parts.push(String(cell));
+  }
+  return parts.some(containsArabicScript);
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function ensureUrduFontStylesheet() {
+  if (document.getElementById('inaam-urdu-export-fonts')) return;
+  const link = document.createElement('link');
+  link.id = 'inaam-urdu-export-fonts';
+  link.rel = 'stylesheet';
+  link.href =
+    'https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600;700&family=Noto+Sans+Arabic:wght@400;600;700&display=swap';
+  document.head.appendChild(link);
+}
+
+/**
+ * Helvetica cannot render Arabic. Build HTML → canvas → real PDF file download
+ * (not the browser print dialog).
+ */
+async function downloadPdfViaHtmlCanvas(
+  filename: string,
+  title: string,
+  headers: string[],
+  rows: (string | number)[][],
+  meta?: ReportExportMeta,
+) {
+  ensureUrduFontStylesheet();
+  const accent = meta?.accentRgb ?? ([200, 16, 46] as [number, number, number]);
+  const accentCss = `rgb(${accent[0]},${accent[1]},${accent[2]})`;
+  const rtl =
+    typeof localStorage !== 'undefined' && localStorage.getItem('inaam.uiLanguage') === 'URDU';
+  const generated = meta?.generatedAt ?? formatDateTime(new Date());
+
+  const statsHtml =
+    meta?.summaryStats?.length
+      ? `<div class="stats">${meta.summaryStats
+          .map(
+            (s) =>
+              `<div class="stat"><span>${escapeHtml(s.label)}</span><strong>${escapeHtml(s.value)}</strong></div>`,
+          )
+          .join('')}</div>`
+      : '';
+
+  const host = document.createElement('div');
+  host.setAttribute('dir', rtl ? 'rtl' : 'ltr');
+  host.setAttribute('lang', rtl ? 'ur' : 'en');
+  host.style.cssText = [
+    'position:fixed',
+    'left:-14000px',
+    'top:0',
+    'width:794px',
+    'background:#ffffff',
+    'padding:28px 24px',
+    'box-sizing:border-box',
+    `font-family:${URDU_PRINT_FONT_STACK}`,
+    'font-size:15px',
+    'color:#111111',
+    'line-height:1.65',
+    'z-index:-1',
+  ].join(';');
+
+  host.innerHTML = `
+<style>
+  .biz { text-align: center; margin-bottom: 10px; }
+  .biz-name { font-size: 18px; font-weight: 800; margin: 0 0 4px; }
+  .biz-meta { font-size: 12px; color: #444; margin: 2px 0; }
+  h1 { font-size: 17px; font-weight: 800; margin: 12px 0 6px; text-align: start; }
+  .meta-line { font-size: 12px; color: #555; margin: 2px 0; text-align: start; }
+  .stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .stat {
+    min-width: 130px;
+    background: #f3f3f3;
+    padding: 8px 10px;
+    border-radius: 4px;
+  }
+  .stat span { display: block; font-size: 12px; opacity: 0.85; }
+  .stat strong { display: block; margin-top: 2px; font-size: 14px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+  th, td {
+    border-bottom: 1px solid #e5e5e5;
+    padding: 8px 10px;
+    text-align: start;
+    font-size: 12px;
+    vertical-align: top;
+  }
+  th { background: ${accentCss}; color: #fff; font-weight: 700; border-bottom: none; }
+  tr:nth-child(even) { background: #fafafa; }
+  .num { text-align: end; font-variant-numeric: tabular-nums; }
+</style>
+<div class="biz">
+  ${meta?.businessName?.trim() ? `<div class="biz-name">${escapeHtml(meta.businessName.trim())}</div>` : ''}
+  ${meta?.phone?.trim() ? `<div class="biz-meta">${escapeHtml(meta.phone.trim())}</div>` : ''}
+  ${meta?.address?.trim() ? `<div class="biz-meta">${escapeHtml(meta.address.trim())}</div>` : ''}
+</div>
+<h1>${escapeHtml(title)}</h1>
+${meta?.dateRange?.trim() ? `<div class="meta-line">${escapeHtml(meta.dateRange.trim())}</div>` : ''}
+<div class="meta-line">${escapeHtml(generated)}</div>
+${statsHtml}
+<table>
+  <thead><tr>${headers
+    .map((h) => {
+      const cls = looksLikeMoney(h) ? ' class="num"' : '';
+      return `<th${cls}>${escapeHtml(h)}</th>`;
+    })
+    .join('')}</tr></thead>
+  <tbody>
+    ${rows
+      .map(
+        (row) =>
+          `<tr>${row
+            .map((c, idx) => {
+              const cell = formatCell(headers[idx] ?? '', c);
+              const cls = looksLikeMoney(headers[idx] ?? '') ? ' class="num"' : '';
+              return `<td${cls}>${escapeHtml(cell).replace(/\n/g, '<br/>')}</td>`;
+            })
+            .join('')}</tr>`,
+      )
+      .join('')}
+  </tbody>
+</table>`;
+
+  document.body.appendChild(host);
+
+  try {
+    if (document.fonts?.ready) {
+      await document.fonts.ready;
+    }
+    await new Promise((r) => window.setTimeout(r, 200));
+
+    const canvas = await html2canvas(host, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+      windowWidth: 794,
+    });
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.93);
+    const pageWidthMm = 210;
+    const pageHeightMm = 297;
+    const marginMm = 10;
+    const usableWidth = pageWidthMm - marginMm * 2;
+    const usableHeight = pageHeightMm - marginMm * 2;
+    const imgHeightMm = (canvas.height * usableWidth) / canvas.width;
+
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    let heightLeft = imgHeightMm;
+    let y = marginMm;
+
+    doc.addImage(imgData, 'JPEG', marginMm, y, usableWidth, imgHeightMm);
+    heightLeft -= usableHeight;
+
+    while (heightLeft > 1) {
+      y = marginMm - (imgHeightMm - heightLeft);
+      doc.addPage();
+      doc.addImage(imgData, 'JPEG', marginMm, y, usableWidth, imgHeightMm);
+      heightLeft -= usableHeight;
+    }
+
+    doc.save(filename);
+  } finally {
+    host.remove();
+  }
 }
 
 export function downloadExcel(
@@ -113,17 +309,23 @@ export function downloadCsv(
     headers.map(escape).join(','),
     ...rows.map((row) => row.map((cell, idx) => escape(formatCell(headers[idx] ?? '', cell))).join(',')),
   ];
-  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  // UTF-8 BOM so Excel correctly shows Urdu / Arabic
+  const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
   triggerDownload(blob, filename);
 }
 
-export function downloadPdf(
+export async function downloadPdf(
   filename: string,
   title: string,
   headers: string[],
   rows: (string | number)[][],
   meta?: ReportExportMeta,
 ) {
+  if (exportTextHasArabic(title, headers, rows, meta)) {
+    await downloadPdfViaHtmlCanvas(filename, title, headers, rows, meta);
+    return;
+  }
+
   const doc = new jsPDF({ orientation: rows[0]?.length > 6 ? 'landscape' : 'portrait' });
   const pageWidth = doc.internal.pageSize.getWidth();
   let startY = 12;

@@ -567,7 +567,7 @@ export async function getSaleReturn(id: number) {
   const row = await prisma.saleReturn.findUnique({
     where: { id },
     include: {
-      invoice: { select: { id: true, invoiceNumber: true, customerId: true } },
+      invoice: { select: { id: true, invoiceNumber: true, customerId: true, date: true } },
       items: {
         include: {
           invoiceItem: {
@@ -587,6 +587,7 @@ export async function getSaleReturn(id: number) {
     id: row.id,
     invoiceId: row.invoiceId,
     invoiceNumber: row.invoice.invoiceNumber,
+    originalInvoiceDate: row.invoice.date,
     date: row.date,
     totalAmount: Number(row.totalAmount),
     refundAmount: Number(row.refundAmount),
@@ -863,7 +864,7 @@ export async function getExchange(id: number) {
   const row = await prisma.exchange.findUnique({
     where: { id },
     include: {
-      invoice: { select: { id: true, invoiceNumber: true } },
+      invoice: { select: { id: true, invoiceNumber: true, date: true } },
       saleReturn: {
         include: {
           items: {
@@ -908,6 +909,7 @@ export async function getExchange(id: number) {
     id: row.id,
     invoiceId: row.invoiceId,
     invoiceNumber: row.invoice.invoiceNumber,
+    originalInvoiceDate: row.invoice.date,
     saleReturnId: row.saleReturnId,
     date: row.date,
     returnTotal: Number(row.returnTotal),

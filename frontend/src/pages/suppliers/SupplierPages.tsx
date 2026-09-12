@@ -14,6 +14,7 @@ import {
   SecondaryButton,
   TextInput,
 } from '../../components/ui/PageShell';
+import { RomanUrduInput } from '../../components/ui/RomanUrduInput';
 
 export function SuppliersListPage() {
   const [result, setResult] = useState<Awaited<ReturnType<typeof api.listSuppliers>> | null>(null);
@@ -214,7 +215,7 @@ export function SupplierFormPage({ mode }: { mode: 'add' | 'edit' }) {
         <form className="space-y-4" onSubmit={onSubmit}>
           <div>
             <FieldLabel>Name</FieldLabel>
-            <TextInput value={name} onChange={(e) => setName(e.target.value)} required />
+            <RomanUrduInput value={name} onValueChange={setName} required />
           </div>
           <div>
             <FieldLabel>Phone</FieldLabel>

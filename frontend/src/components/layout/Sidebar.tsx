@@ -4,6 +4,7 @@ import { LogOut } from 'lucide-react';
 import { TOP_NAV } from '../../config/navigation';
 import { navLinkIcon } from '../../config/navIcons';
 import { useAuth } from '../../contexts/AuthContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { APP_DISPLAY_NAME, APP_DEFAULT_LOGO, onSettingsUpdated } from '../../config/brand';
 import { BusinessName } from '../brand/BusinessName';
 import { api } from '../../lib/api';
@@ -23,10 +24,11 @@ function SidebarLink({
   label: string;
   active: boolean;
 }) {
+  const { t } = useLanguage();
   return (
     <Link to={to} className={`app-sidebar-link ${active ? 'is-active' : ''}`}>
       <NavIcon label={label} />
-      {label}
+      {t(label)}
     </Link>
   );
 }
@@ -40,6 +42,7 @@ export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { t } = useLanguage();
   const [businessName, setBusinessName] = useState(APP_DISPLAY_NAME);
   const [tagline, setTagline] = useState('');
   const [logoUrl, setLogoUrl] = useState<string>(APP_DEFAULT_LOGO);
@@ -106,7 +109,7 @@ export function Sidebar() {
         ) : null}
         <button type="button" className="app-sidebar-signout" onClick={() => void onSignOut()}>
           <LogOut className="h-4 w-4 shrink-0" aria-hidden />
-          Sign Out
+          {t('Sign out')}
         </button>
       </div>
     </aside>

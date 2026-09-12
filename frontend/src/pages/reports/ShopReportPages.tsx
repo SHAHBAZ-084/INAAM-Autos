@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, type BusinessSettings, type DateRangePreset, type PaginatedResult } from '../../lib/api';
-import { formatDate, formatMoney } from '../../lib/format';
+import { formatDate, formatDateTime, formatMoney } from '../../lib/format';
 import { downloadCsv, downloadExcel, downloadPdf, type ReportExportMeta } from '../../lib/reportExport';
 import { resolveLogoDataUrl } from '../../lib/electronPrint';
 import {
@@ -12,6 +12,13 @@ import {
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { SegmentedControl } from '../../components/ui/SegmentedControl';
 import { HubCloseButton } from '../../components/ui/HubCloseButton';
+import { useLanguage } from '../../contexts/LanguageContext';
+import {
+  URDU_PRINT_FONT_LINKS,
+  URDU_PRINT_FONT_STACK,
+  containsArabicScript,
+  isRtlUiLanguage,
+} from '../../i18n/printFonts';
 import { Printer } from 'lucide-react';
 import {
   FieldLabel,
@@ -93,6 +100,7 @@ function ReportStatBoxes({
 }: {
   stats: Array<{ label: string; value: string; tone?: 'default' | 'success' | 'danger' }>;
 }) {
+  const { t } = useLanguage();
   return (
     <div className="flex flex-wrap gap-2">
       {stats.map((s) => (
@@ -106,7 +114,7 @@ function ReportStatBoxes({
                 : 'bg-[#f3f3f3] text-textPrimary'
           }`}
         >
-          <div className="text-[10px] font-semibold uppercase tracking-wide opacity-80">{s.label}</div>
+          <div className="text-[10px] font-semibold opacity-80">{t(s.label)}</div>
           <div className="mt-0.5 text-sm font-extrabold tabular-nums">{s.value}</div>
         </div>
       ))}
@@ -143,10 +151,17 @@ export function ReportShell({
   resolveExportRows,
   hidePreset = false,
 }: ReportShellProps) {
+  const { t, language } = useLanguage();
   const [businessMeta, setBusinessMeta] = useState<ReportExportMeta>({});
   const [printSettings, setPrintSettings] = useState<BusinessSettings | null>(null);
   const [exporting, setExporting] = useState(false);
   const accent = printSettings?.secondaryColor?.trim() || BRAND_ACCENT;
+  const displayTitle = t(title);
+  const displayHeaders = headers.map((h) => t(h));
+  const presetOptions = PRESET_OPTIONS.map((o) => ({ ...o, label: t(o.label) }));
+  const emptyText = emptyMessage ? t(emptyMessage) : t('No rows to show');
+  const searchPh = searchPlaceholder ? t(searchPlaceholder) : t('Search…');
+  const urduRtl = isRtlUiLanguage(language);
 
   useEffect(() => {
     api
@@ -170,11 +185,11 @@ export function ReportShell({
   const meta: ReportExportMeta = {
     ...businessMeta,
     ...exportMeta,
-    generatedAt: exportMeta?.generatedAt ?? new Date().toLocaleString(),
+    generatedAt: exportMeta?.generatedAt ?? formatDateTime(new Date()),
     accentRgb: exportMeta?.accentRgb ?? businessMeta.accentRgb ?? hexToRgb(accent),
     summaryStats:
       exportMeta?.summaryStats ??
-      headerStats?.map((s) => ({ label: s.label, value: s.value })),
+      headerStats?.map((s) => ({ label: t(s.label), value: s.value })),
   };
 
   async function rowsForExport() {
@@ -187,9 +202,9 @@ export function ReportShell({
     try {
       const exportRows = await rowsForExport();
       const base = title.replace(/\s+/g, '-').toLowerCase();
-      if (format === 'pdf') downloadPdf(`${base}.pdf`, title, headers, exportRows, meta);
-      else if (format === 'excel') downloadExcel(`${base}.xlsx`, title.slice(0, 31), headers, exportRows, meta);
-      else downloadCsv(`${base}.csv`, headers, exportRows, meta);
+      if (format === 'pdf') await downloadPdf(`${base}.pdf`, displayTitle, displayHeaders, exportRows, meta);
+      else if (format === 'excel') downloadExcel(`${base}.xlsx`, displayTitle.slice(0, 31), displayHeaders, exportRows, meta);
+      else downloadCsv(`${base}.csv`, displayHeaders, exportRows, meta);
     } finally {
       setExporting(false);
     }
@@ -202,33 +217,45 @@ export function ReportShell({
       const headerHtml = printSettings
         ? buildPrintDocumentHeaderHtml(
             printHeaderFromSettings(printSettings, {
-              title,
+              title: displayTitle,
               logoSrc: meta.logoSrc,
               generatedAt: meta.generatedAt,
               dateRange: meta.dateRange,
             }),
           )
-        : `<h1>${title}</h1>`;
+        : `<h1>${displayTitle}</h1>`;
       const statsHtml =
         headerStats && headerStats.length
           ? `<div class="print-summary-row">${headerStats
               .map(
                 (s) =>
-                  `<div class="print-summary-box">${s.label}<strong>${s.value}</strong></div>`,
+                  `<div class="print-summary-box">${t(s.label)}<strong>${s.value}</strong></div>`,
               )
               .join('')}</div>`
           : '';
-      const html = `<html><head><title>${title}</title><style>
+      const printProbe = [
+        displayTitle,
+        ...displayHeaders,
+        ...(headerStats?.map((s) => t(s.label)) ?? []),
+        ...exportRows.flatMap((row) => row.map(String)),
+      ].join(' ');
+      const needsUrduFonts = containsArabicScript(printProbe);
+      const htmlLangAttrs = urduRtl ? ' lang="ur" dir="rtl"' : '';
+      const fontLinks = needsUrduFonts ? URDU_PRINT_FONT_LINKS : '';
+      const bodyFont = needsUrduFonts
+        ? URDU_PRINT_FONT_STACK
+        : 'Arial,sans-serif';
+      const html = `<!DOCTYPE html><html${htmlLangAttrs}><head><meta charset="utf-8"/>${fontLinks}<title>${displayTitle}</title><style>
       ${printHeaderCss(accent)}
-      body{font-family:Arial,sans-serif;padding:16px;color:#111;background:#fff}
+      body{font-family:${bodyFont};padding:16px;color:#111;background:#fff${urduRtl ? ';direction:rtl' : ''}}
       table{border-collapse:collapse;width:100%;margin-top:4px}
-      th,td{border-bottom:1px solid #e5e5e5;padding:8px 10px;text-align:left;font-size:11px;vertical-align:top}
+      th,td{border-bottom:1px solid #e5e5e5;padding:8px 10px;text-align:start;font-size:${needsUrduFonts ? '13px' : '11px'};vertical-align:top}
       th{background:${accent};color:#fff;font-weight:700;border-bottom:none}
       tr:nth-child(even){background:#fafafa}
-      .num{text-align:right}
+      .num{text-align:end}
       .items-detail{font-size:10px;color:#666;font-weight:500;margin-top:2px;line-height:1.35}
     </style></head><body class="print-doc-wrap">${headerHtml}${statsHtml}
-    <table class="print-table-accent"><thead><tr>${headers.map((h) => `<th>${h}</th>`).join('')}</tr></thead>
+    <table class="print-table-accent"><thead><tr>${displayHeaders.map((h) => `<th>${h}</th>`).join('')}</tr></thead>
     <tbody>${exportRows.map((row) => `<tr>${row.map((c) => `<td>${String(c).replace(/\n/g, '<br/>')}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`;
       const w = window.open('', '_blank');
       if (!w) return;
@@ -258,7 +285,7 @@ export function ReportShell({
                 <img src={meta.logoSrc} alt="" className="max-h-14 max-w-[140px] object-contain bg-white" />
               ) : (
                 <div className="text-lg font-extrabold tracking-tight text-textPrimary">
-                  {meta.businessName || 'Business'}
+                  {meta.businessName || t('Business')}
                 </div>
               )}
             </div>
@@ -279,16 +306,18 @@ export function ReportShell({
               {headerStats?.length ? <ReportStatBoxes stats={headerStats} /> : <div />}
             </div>
             <div className="text-right">
-              <div className="text-lg font-extrabold text-textPrimary">{title}</div>
+              <div className="text-lg font-extrabold text-textPrimary">{displayTitle}</div>
               {meta.dateRange ? <div className="text-xs font-semibold text-textSecondary">{meta.dateRange}</div> : null}
-              <div className="text-xs font-semibold text-textSecondary">Generated: {meta.generatedAt}</div>
+              <div className="text-xs font-semibold text-textSecondary">
+                {t('Generated')}: {meta.generatedAt}
+              </div>
             </div>
           </div>
         </div>
 
         <div className="space-y-3 px-4 py-4 sm:px-5">
           {!hidePreset && onPresetChange && preset ? (
-            <SegmentedControl value={preset} onChange={(v) => onPresetChange(v as DateRangePreset)} options={PRESET_OPTIONS} />
+            <SegmentedControl value={preset} onChange={(v) => onPresetChange(v as DateRangePreset)} options={presetOptions} />
           ) : null}
           <div className="flex flex-wrap items-end gap-3">
             {preset === 'custom' && onFromDate && onToDate ? (
@@ -302,7 +331,7 @@ export function ReportShell({
             {onSearch ? (
               <>
                 <FieldLabel>Search</FieldLabel>
-                <TextInput value={search ?? ''} onChange={(e) => onSearch(e.target.value)} placeholder={searchPlaceholder ?? 'Search…'} />
+                <TextInput value={search ?? ''} onChange={(e) => onSearch(e.target.value)} placeholder={searchPh} />
               </>
             ) : null}
             {children}
@@ -322,7 +351,7 @@ export function ReportShell({
             </SecondaryButton>
             <IconButton
               icon={Printer}
-              label="Print report"
+              label={t('Print report')}
               variant="neutral"
               size="md"
               onClick={() => void printReport()}
@@ -338,10 +367,10 @@ export function ReportShell({
 
       <Panel className="overflow-hidden p-0">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[480px] text-left text-sm">
+          <table className="app-report-table w-full min-w-[480px] text-start text-sm">
             <thead>
               <tr style={{ backgroundColor: accent }}>
-                {headers.map((h) => (
+                {displayHeaders.map((h) => (
                   <th key={h} className="px-3 py-2.5 font-semibold text-white">
                     {h}
                   </th>
@@ -353,20 +382,30 @@ export function ReportShell({
                 <tr>
                   <td colSpan={headers.length} className="px-3 py-4 text-textMuted">
                     {loading
-                      ? 'Loading…'
+                      ? t('Loading…')
                       : hasLoaded
-                        ? emptyMessage || 'Nothing to show.'
-                        : 'Load report to see data.'}
+                        ? emptyText
+                        : t('Load report to see data.')}
                   </td>
                 </tr>
               ) : (
                 rows.map((row, i) => (
                   <tr key={i} className="border-b border-border/70 odd:bg-white even:bg-surface1/40 last:border-0">
-                    {row.map((cell, j) => (
-                      <td key={j} className="whitespace-pre-line px-3 py-2.5 align-top text-textPrimary">
-                        {cell}
-                      </td>
-                    ))}
+                    {row.map((cell, j) => {
+                      const numeric =
+                        typeof cell === 'number' ||
+                        (typeof cell === 'string' && /^-?[\d,.]+$/.test(cell.trim()));
+                      return (
+                        <td
+                          key={j}
+                          className={`whitespace-pre-line px-3 py-2.5 align-middle text-textPrimary ${
+                            numeric ? 'text-end tabular-nums' : 'text-start'
+                          }`}
+                        >
+                          {cell}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))
               )}
@@ -590,9 +629,88 @@ export function ProductProfitReportPage() {
     <ReportShell
       {...bindPaginatedReport(r, {
         title: 'Product-wise Profit',
-        subtitle: 'Uses historical costAtSale — not current purchase price',
+        subtitle: 'Includes exchanges; returns remove only the returned product margin from profit',
       })}
     />
+  );
+}
+
+type BestSellingRow = {
+  srNo: number;
+  name: string;
+  quantitySold: number;
+  stockRemaining: number;
+  revenue: number;
+  profit: number;
+};
+
+type BestSellingSummary = {
+  productCount: number;
+  totalSoldQty: number;
+  totalRevenue: number;
+  totalProfit: number;
+  minSoldQty: number;
+};
+
+export function BestSellingProductsReportPage() {
+  const { t } = useLanguage();
+  const r = usePaginatedReport<BestSellingRow>(
+    '/sales/best-selling',
+    (i) => [
+      i.srNo,
+      i.name,
+      i.quantitySold,
+      i.stockRemaining,
+      formatMoney(i.revenue),
+      formatMoney(i.profit),
+    ],
+    () => ['Sr No', 'Product Name', 'Sold Qty', 'Stock Remaining', 'Revenue', 'Profit'],
+  );
+  const [minSoldQty, setMinSoldQty] = useState('1');
+  const summary = (r.result as { summary?: BestSellingSummary } | null)?.summary;
+
+  useEffect(() => {
+    const n = Math.max(0, Math.floor(Number(minSoldQty) || 1));
+    r.setExtraParams({ minSoldQty: String(n) });
+    r.setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when filter value changes
+  }, [minSoldQty]);
+
+  const headerStats = summary
+    ? [
+        { label: 'Products', value: String(summary.productCount) },
+        { label: 'Sold Qty', value: String(summary.totalSoldQty) },
+        { label: 'Revenue', value: `Rs ${formatMoney(summary.totalRevenue)}` },
+        { label: 'Profit', value: `Rs ${formatMoney(summary.totalProfit)}`, tone: 'success' as const },
+      ]
+    : undefined;
+
+  return (
+    <ReportShell
+      {...bindPaginatedReport(r, {
+        title: 'Best Selling Products',
+        subtitle:
+          'Top products by sold quantity in the selected period — with stock left, revenue, and profit',
+        searchPlaceholder: 'Product name or code…',
+        headerStats,
+      })}
+    >
+      <div className="flex flex-wrap items-end gap-2">
+        <div>
+          <FieldLabel>Min sold qty</FieldLabel>
+          <TextInput
+            type="number"
+            min={0}
+            step={1}
+            className="w-28"
+            value={minSoldQty}
+            onChange={(e) => setMinSoldQty(e.target.value)}
+            title={t('Show products sold at least this many times')}
+          />
+        </div>
+        <p className="pb-2 text-xs text-textMuted">{t('Default 1 = any sale. Raise to find only high-volume items.')}</p>
+      </div>
+    </ReportShell>
   );
 }
 
@@ -611,7 +729,7 @@ export function InvoiceProfitReportPage() {
     (i) => [formatDate(i.date), i.invoiceNumber, i.customerName ?? 'Walk-in', formatMoney(i.netSales), formatMoney(i.costOfGoodsSold), formatMoney(i.grossProfit)],
     () => ['Date', 'Invoice', 'Customer', 'Net Sales', 'COGS', 'Gross Profit'],
   );
-  return <ReportShell {...bindPaginatedReport(r, { title: 'Invoice-wise Profit' })} />;
+  return <ReportShell {...bindPaginatedReport(r, { title: 'Invoice-wise Profit', subtitle: 'Adjusted for returns and linked exchanges on each invoice' })} />;
 }
 
 export function UdhaarSalesReportPage() {
@@ -653,31 +771,92 @@ export function ReturnsExchangesReportPage() {
   const [preset, setPreset] = useState<DateRangePreset>('month');
   const [rows, setRows] = useState<(string | number)[][]>([]);
   const [loading, setLoading] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState('');
-  const headers = ['Type', 'Date', 'Invoice', 'Amount', 'Note'];
+  const [summary, setSummary] = useState<{ saleReturns: number; netSales: number; grossProfit: number; netProfit: number } | null>(null);
+  const headers = ['Type', 'Date', 'Invoice', 'Returned', 'New sale', 'Net / refund', 'Note'];
 
   async function load() {
     setLoading(true);
     setError('');
     try {
-      const data = await api.fetchReport<{ returns: PaginatedResult<{ date: string; invoiceNumber: string; totalAmount: number; isExchange: boolean }>; exchanges: Array<{ date: string; invoiceNumber: string; netAmount: number }> }>('/sales/returns-exchanges', { preset, page: 1, pageSize: 50 });
-      const returnRows = data.returns.items.map((r) => ['Return', formatDate(r.date), r.invoiceNumber, formatMoney(r.totalAmount), r.isExchange ? 'Exchange' : '']);
-      const exchangeRows = data.exchanges.map((e) => ['Exchange', formatDate(e.date), e.invoiceNumber, formatMoney(e.netAmount), '']);
+      const data = await api.fetchReport<{
+        returns: PaginatedResult<{
+          date: string;
+          invoiceNumber: string;
+          totalAmount: number;
+          refundAmount: number;
+          isExchange: boolean;
+        }>;
+        exchanges: Array<{
+          date: string;
+          invoiceNumber: string;
+          returnTotal: number;
+          newSaleTotal: number;
+          netAmount: number;
+        }>;
+        summary?: { saleReturns: number; netSales: number; grossProfit: number; netProfit: number };
+      }>('/sales/returns-exchanges', { preset, page: 1, pageSize: 100 });
+      const returnRows = data.returns.items
+        .filter((r) => !r.isExchange)
+        .map((r) => [
+          'Return',
+          formatDate(r.date),
+          r.invoiceNumber,
+          formatMoney(r.totalAmount),
+          '—',
+          formatMoney(r.refundAmount),
+          'Refund',
+        ]);
+      const exchangeRows = data.exchanges.map((e) => [
+        'Exchange',
+        formatDate(e.date),
+        e.invoiceNumber,
+        formatMoney(e.returnTotal),
+        formatMoney(e.newSaleTotal),
+        formatMoney(e.netAmount),
+        e.netAmount >= 0 ? 'Customer pays' : 'Refund',
+      ]);
       setRows([...returnRows, ...exchangeRows]);
+      setSummary(data.summary ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
       setRows([]);
+      setSummary(null);
     } finally {
+      setHasLoaded(true);
       setLoading(false);
     }
   }
 
+  const headerStats = summary
+    ? [
+        { label: 'Returns (period)', value: `Rs ${formatMoney(summary.saleReturns)}` },
+        { label: 'Net sales', value: `Rs ${formatMoney(summary.netSales)}` },
+        { label: 'Gross profit', value: `Rs ${formatMoney(summary.grossProfit)}` },
+        { label: 'Net profit', value: `Rs ${formatMoney(summary.netProfit)}` },
+      ]
+    : undefined;
+
   return (
-    <ReportShell title="Returns & Exchanges" headers={headers} rows={rows} loading={loading} error={error} onLoad={() => void load()} preset={preset} onPresetChange={setPreset} />
+    <ReportShell
+      title="Returns & Exchanges"
+      subtitle="Returns reduce period sales; exchanges add new sale and profit after deducting returned value"
+      headers={headers}
+      rows={rows}
+      loading={loading}
+      hasLoaded={hasLoaded}
+      error={error}
+      onLoad={() => void load()}
+      preset={preset}
+      onPresetChange={setPreset}
+      headerStats={headerStats}
+    />
   );
 }
 
 export function DailySalesReportPage() {
+  const { t } = useLanguage();
   const [searchParams] = useSearchParams();
   const initialPreset = (searchParams.get('preset') as DateRangePreset) || 'today';
   const [preset, setPreset] = useState<DateRangePreset>(
@@ -691,13 +870,15 @@ export function DailySalesReportPage() {
     cash: number;
     ePayment: number;
     profit: number;
+    netProfit?: number;
     discount: number;
+    returns?: number;
   } | null>(null);
   const [rangeLabel, setRangeLabel] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState('');
-  const headers = ['Date', 'Product', 'Qty sold', 'Discount', 'Amount'];
+  const headers = ['Date', 'Type', 'Product', 'Qty', 'Discount', 'Amount'];
 
   async function load() {
     setLoading(true);
@@ -707,6 +888,7 @@ export function DailySalesReportPage() {
         range: { label: string };
         items: Array<{
           date: string;
+          kind: 'SALE' | 'RETURN' | 'EXCHANGE';
           productName: string;
           quantity: number;
           discount: number;
@@ -717,7 +899,9 @@ export function DailySalesReportPage() {
           cash: number;
           ePayment: number;
           profit: number;
+          netProfit?: number;
           discount: number;
+          returns?: number;
         };
       }>('/sales/daily-detail', {
         fromDate: preset === 'custom' ? fromDate : undefined,
@@ -730,8 +914,15 @@ export function DailySalesReportPage() {
         data.items.map((row) => {
           const showDate = row.date !== lastDate;
           lastDate = row.date;
+          const typeLabel =
+            row.kind === 'RETURN'
+              ? t('Return')
+              : row.kind === 'EXCHANGE'
+                ? t('Exchange')
+                : t('Sale');
           return [
             showDate ? formatDate(`${row.date}T12:00:00`) : '',
+            typeLabel,
             row.productName,
             row.quantity,
             formatMoney(row.discount),
@@ -758,10 +949,12 @@ export function DailySalesReportPage() {
 
   const headerStats = summary
     ? [
-        { label: 'Full sale', value: `Rs ${formatMoney(summary.fullSale)}` },
-        { label: 'Cash sale', value: `Rs ${formatMoney(summary.cash)}` },
-        { label: 'E-payment sale', value: `Rs ${formatMoney(summary.ePayment)}` },
-        { label: 'Profit', value: `Rs ${formatMoney(summary.profit)}` },
+        { label: 'Net sale', value: `Rs ${formatMoney(summary.fullSale)}` },
+        { label: 'Returns', value: `Rs ${formatMoney(summary.returns ?? 0)}` },
+        { label: 'Cash', value: `Rs ${formatMoney(summary.cash)}` },
+        { label: 'E-payment', value: `Rs ${formatMoney(summary.ePayment)}` },
+        { label: 'Gross profit', value: `Rs ${formatMoney(summary.profit)}` },
+        { label: 'Net profit', value: `Rs ${formatMoney(summary.netProfit ?? summary.profit)}` },
         { label: 'Discount', value: `Rs ${formatMoney(summary.discount)}` },
       ]
     : undefined;
@@ -769,7 +962,7 @@ export function DailySalesReportPage() {
   return (
     <ReportShell
       title="Sales report"
-      subtitle="Product-wise day summary for the selected period"
+      subtitle="Sales, returns, and exchanges by day — returns reduce today's sale; profit loses returned margin only"
       headers={headers}
       rows={rows}
       loading={loading}
@@ -784,7 +977,7 @@ export function DailySalesReportPage() {
       onToDate={setToDate}
       headerStats={headerStats}
       exportMeta={{ dateRange: rangeLabel || reportDateRangeLabel(preset, fromDate, toDate) }}
-      emptyMessage="No sales in this period."
+      emptyMessage="No sales, returns, or exchanges in this period."
     />
   );
 }
