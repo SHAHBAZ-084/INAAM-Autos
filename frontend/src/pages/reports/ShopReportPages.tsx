@@ -30,6 +30,7 @@ import {
   SecondaryButton,
   TextInput,
 } from '../../components/ui/PageShell';
+import { RomanUrduInput } from '../../components/ui/RomanUrduInput';
 
 const BRAND_ACCENT = '#C8102E';
 
@@ -331,7 +332,11 @@ export function ReportShell({
             {onSearch ? (
               <>
                 <FieldLabel>Search</FieldLabel>
-                <TextInput value={search ?? ''} onChange={(e) => onSearch(e.target.value)} placeholder={searchPh} />
+                <RomanUrduInput
+                  value={search ?? ''}
+                  onValueChange={onSearch}
+                  placeholder={searchPlaceholder ?? 'Search…'}
+                />
               </>
             ) : null}
             {children}
@@ -644,13 +649,35 @@ type BestSellingRow = {
   profit: number;
 };
 
+type BestSellingSort =
+  | 'sold_desc'
+  | 'sold_asc'
+  | 'name_asc'
+  | 'name_desc'
+  | 'stock_desc'
+  | 'stock_asc'
+  | 'revenue_desc'
+  | 'profit_desc';
+
 type BestSellingSummary = {
   productCount: number;
   totalSoldQty: number;
   totalRevenue: number;
   totalProfit: number;
   maxSoldQty: number | null;
+  sortBy?: BestSellingSort;
 };
+
+const BEST_SELLING_SORT_OPTIONS: { value: BestSellingSort; label: string }[] = [
+  { value: 'sold_desc', label: 'Most to least (sold qty)' },
+  { value: 'sold_asc', label: 'Least to most (sold qty)' },
+  { value: 'name_asc', label: 'A to Z (name)' },
+  { value: 'name_desc', label: 'Z to A (name)' },
+  { value: 'stock_desc', label: 'Stock high to low' },
+  { value: 'stock_asc', label: 'Stock low to high' },
+  { value: 'revenue_desc', label: 'Revenue high to low' },
+  { value: 'profit_desc', label: 'Profit high to low' },
+];
 
 export function BestSellingProductsReportPage() {
   const { t } = useLanguage();
@@ -667,19 +694,20 @@ export function BestSellingProductsReportPage() {
     () => ['Sr No', 'Product Name', 'Sold Qty', 'Stock Remaining', 'Revenue', 'Profit'],
   );
   const [maxSoldQty, setMaxSoldQty] = useState('');
+  const [sortBy, setSortBy] = useState<BestSellingSort>('sold_desc');
   const summary = (r.result as { summary?: BestSellingSummary } | null)?.summary;
 
   useEffect(() => {
+    const next: Record<string, string> = { sortBy };
     const trimmed = maxSoldQty.trim();
-    if (trimmed === '') {
-      r.setExtraParams({});
-    } else {
+    if (trimmed !== '') {
       const n = Math.max(0, Math.floor(Number(trimmed) || 0));
-      r.setExtraParams({ maxSoldQty: String(n) });
+      next.maxSoldQty = String(n);
     }
+    r.setExtraParams(next);
     r.setPage(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when filter value changes
-  }, [maxSoldQty]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when filters change
+  }, [maxSoldQty, sortBy]);
 
   const headerStats = summary
     ? [
@@ -694,13 +722,26 @@ export function BestSellingProductsReportPage() {
     <ReportShell
       {...bindPaginatedReport(r, {
         title: 'Best Selling Products',
-        subtitle:
-          'Product-wise sales overview — least sold first (dead / slow movers on top)',
+        subtitle: 'Product-wise sales overview — choose sort and optional max sold qty',
         searchPlaceholder: 'Product name or code…',
         headerStats,
       })}
     >
-      <div className="flex flex-wrap items-end gap-2">
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <FieldLabel>Sort by</FieldLabel>
+          <select
+            className="min-w-[11rem] rounded-lg border border-border bg-surface2 px-3 py-2 text-sm"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as BestSellingSort)}
+          >
+            {BEST_SELLING_SORT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {t(o.label)}
+              </option>
+            ))}
+          </select>
+        </div>
         <div>
           <FieldLabel>Max sold qty</FieldLabel>
           <TextInput
@@ -715,7 +756,7 @@ export function BestSellingProductsReportPage() {
           />
         </div>
         <p className="pb-2 text-xs text-textMuted">
-          {t('Empty = full list. e.g. 5 = only items sold 0–5 times. Sorted least → most.')}
+          {t('Empty max = full list. Sort dropdown changes order.')}
         </p>
       </div>
     </ReportShell>

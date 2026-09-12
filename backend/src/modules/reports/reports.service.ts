@@ -589,9 +589,9 @@ export async function reportProductProfit(params: {
 }
 
 /**
- * Product-wise sales overview for a period (slow movers first).
+ * Product-wise sales overview for a period.
  * Optional maxSoldQty keeps products with sold qty <= that value (dead / low sales).
- * Includes products with zero sales in the period when max allows (or no max).
+ * sortBy controls order (sold, name, stock, revenue, profit).
  */
 export async function reportBestSellingProducts(params: {
   preset?: DateRangePreset;
@@ -602,6 +602,8 @@ export async function reportBestSellingProducts(params: {
   search?: string;
   /** Maximum net sold quantity in the period (inclusive). Omit = no max (full overview). */
   maxSoldQty?: number;
+  /** Sort order. Default: sold_desc (most to least). */
+  sortBy?: string;
 }) {
   const preset = params.preset ?? 'month';
   const range = resolveDateRange(preset, params.fromDate, params.toDate);
@@ -610,6 +612,20 @@ export async function reportBestSellingProducts(params: {
     params.maxSoldQty !== undefined && Number.isFinite(params.maxSoldQty)
       ? Math.max(0, Math.floor(params.maxSoldQty))
       : undefined;
+  const SORT_OPTIONS = [
+    'sold_desc',
+    'sold_asc',
+    'name_asc',
+    'name_desc',
+    'stock_desc',
+    'stock_asc',
+    'revenue_desc',
+    'profit_desc',
+  ] as const;
+  type SortBy = (typeof SORT_OPTIONS)[number];
+  const sortBy: SortBy = SORT_OPTIONS.includes(params.sortBy as SortBy)
+    ? (params.sortBy as SortBy)
+    : 'sold_desc';
 
   const soldRows = await getProductWiseProfit(range.from, range.to);
   const soldById = new Map(soldRows.map((r) => [r.productId, r]));
@@ -651,10 +667,30 @@ export async function reportBestSellingProducts(params: {
     );
   }
 
-  // Least sold first (dead / slow movers at top), then name
-  enriched.sort(
-    (a, b) => a.quantitySold - b.quantitySold || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
-  );
+  const byName = (a: { name: string }, b: { name: string }) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+
+  enriched.sort((a, b) => {
+    switch (sortBy) {
+      case 'sold_asc':
+        return a.quantitySold - b.quantitySold || byName(a, b);
+      case 'name_asc':
+        return byName(a, b);
+      case 'name_desc':
+        return byName(b, a);
+      case 'stock_asc':
+        return a.stockRemaining - b.stockRemaining || byName(a, b);
+      case 'stock_desc':
+        return b.stockRemaining - a.stockRemaining || byName(a, b);
+      case 'revenue_desc':
+        return b.revenue - a.revenue || byName(a, b);
+      case 'profit_desc':
+        return b.profit - a.profit || byName(a, b);
+      case 'sold_desc':
+      default:
+        return b.quantitySold - a.quantitySold || byName(a, b);
+    }
+  });
 
   const withSr = enriched.map((r, index) => ({
     ...r,
@@ -680,6 +716,7 @@ export async function reportBestSellingProducts(params: {
       totalRevenue,
       totalProfit,
       maxSoldQty: maxSoldQty ?? null,
+      sortBy,
     },
     emptyMessage:
       enriched.length === 0

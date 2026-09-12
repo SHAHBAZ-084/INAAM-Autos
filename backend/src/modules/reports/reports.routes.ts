@@ -126,6 +126,7 @@ reportsRouter.get(
         pageSize: queryInt(req.query.pageSize as string),
         search: req.query.search as string,
         maxSoldQty,
+        sortBy: req.query.sortBy as string | undefined,
       }),
     );
   }),
