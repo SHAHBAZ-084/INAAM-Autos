@@ -114,7 +114,10 @@ reportsRouter.get(
 reportsRouter.get(
   '/sales/best-selling',
   asyncHandler(async (req, res) => {
-    const maxRaw = (req.query.maxSoldQty ?? req.query.minSoldQty) as string | undefined;
+    const minRaw = req.query.minSoldQty as string | undefined;
+    const maxRaw = req.query.maxSoldQty as string | undefined;
+    const minSoldQty =
+      minRaw !== undefined && minRaw !== '' ? queryInt(minRaw) : undefined;
     const maxSoldQty =
       maxRaw !== undefined && maxRaw !== '' ? queryInt(maxRaw) : undefined;
     res.json(
@@ -125,6 +128,7 @@ reportsRouter.get(
         page: queryInt(req.query.page as string),
         pageSize: queryInt(req.query.pageSize as string),
         search: req.query.search as string,
+        minSoldQty,
         maxSoldQty,
         sortBy: req.query.sortBy as string | undefined,
       }),

@@ -551,6 +551,17 @@ export const URDU_DICTIONARY: Record<string, string> = {
     'مال کے حساب سے فروخت — کم بکا پہلے (بند / کم فروخت اوپر)',
   'Product-wise sales overview — choose sort and optional max sold qty':
     'مال کے حساب سے فروخت — ترتیب اور زیادہ سے زیادہ تعداد چنیں',
+  'Product-wise sales overview — choose sort and min/max sold qty filter':
+    'مال کے حساب سے فروخت — ترتیب اور کم از کم / زیادہ سے زیادہ فلٹر',
+  'Sold qty filter': 'بکی تعداد کا فلٹر',
+  'No qty filter': 'کوئی مقدار فلٹر نہیں',
+  'Min sold qty': 'کم از کم بکی تعداد',
+  'Max sold qty': 'زیادہ سے زیادہ بکی تعداد',
+  'Min value': 'کم از کم مقدار',
+  'Max value': 'زیادہ سے زیادہ مقدار',
+  'Show products sold at least this many times': 'اتنی یا زیادہ بار بکا مال دکھائیں',
+  'No products match that sold quantity filter in this period.':
+    'اس مدت میں اس مقدار فلٹر سے میل کھاتا مال نہیں۔',
   'Sort by': 'ترتیب',
   'Most to least (sold qty)': 'زیادہ سے کم (بکی تعداد)',
   'Least to most (sold qty)': 'کم سے زیادہ (بکی تعداد)',
@@ -562,7 +573,6 @@ export const URDU_DICTIONARY: Record<string, string> = {
   'Profit high to low': 'منافع زیادہ سے کم',
   'Empty max = full list. Sort dropdown changes order.':
     'خالی حد = پوری لسٹ۔ ترتیب ڈراپ ڈاؤن سے بدلیں۔',
-  'Max sold qty': 'زیادہ سے زیادہ بکی تعداد',
   'No limit': 'کوئی حد نہیں',
   'Show products sold at most this many times (leave empty for all)':
     'اتنی یا کم بار بکا مال دکھائیں (خالی = سب)',

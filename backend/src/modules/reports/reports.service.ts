@@ -600,6 +600,8 @@ export async function reportBestSellingProducts(params: {
   page?: number;
   pageSize?: number;
   search?: string;
+  /** Minimum net sold quantity in the period (inclusive). */
+  minSoldQty?: number;
   /** Maximum net sold quantity in the period (inclusive). Omit = no max (full overview). */
   maxSoldQty?: number;
   /** Sort order. Default: sold_desc (most to least). */
@@ -608,6 +610,10 @@ export async function reportBestSellingProducts(params: {
   const preset = params.preset ?? 'month';
   const range = resolveDateRange(preset, params.fromDate, params.toDate);
   const { page, pageSize } = paginateParams(params.page, params.pageSize);
+  const minSoldQty =
+    params.minSoldQty !== undefined && Number.isFinite(params.minSoldQty)
+      ? Math.max(0, Math.floor(params.minSoldQty))
+      : undefined;
   const maxSoldQty =
     params.maxSoldQty !== undefined && Number.isFinite(params.maxSoldQty)
       ? Math.max(0, Math.floor(params.maxSoldQty))
@@ -656,6 +662,9 @@ export async function reportBestSellingProducts(params: {
     };
   });
 
+  if (minSoldQty !== undefined) {
+    enriched = enriched.filter((r) => r.quantitySold >= minSoldQty);
+  }
   if (maxSoldQty !== undefined) {
     enriched = enriched.filter((r) => r.quantitySold <= maxSoldQty);
   }
@@ -715,13 +724,14 @@ export async function reportBestSellingProducts(params: {
       totalSoldQty,
       totalRevenue,
       totalProfit,
+      minSoldQty: minSoldQty ?? null,
       maxSoldQty: maxSoldQty ?? null,
       sortBy,
     },
     emptyMessage:
       enriched.length === 0
-        ? maxSoldQty !== undefined
-          ? 'No products at or below that sold quantity in this period.'
+        ? minSoldQty !== undefined || maxSoldQty !== undefined
+          ? 'No products match that sold quantity filter in this period.'
           : 'No products to show.'
         : undefined,
   };

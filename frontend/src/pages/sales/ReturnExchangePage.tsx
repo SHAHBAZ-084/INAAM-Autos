@@ -29,6 +29,7 @@ import {
   SecondaryButton,
   TextInput,
 } from '../../components/ui/PageShell';
+import { RomanUrduInput } from '../../components/ui/RomanUrduInput';
 import { HubCloseButton } from '../../components/ui/HubCloseButton';
 import {
   PaymentMethodFields,
@@ -562,9 +563,9 @@ export function ReturnExchangePage() {
               <div className="mb-3 grid gap-3 md:grid-cols-2">
                 <div>
                   <FieldLabel>Search by name or code</FieldLabel>
-                  <TextInput
+                  <RomanUrduInput
                     value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    onValueChange={setSearch}
                     placeholder="Type product name or code"
                   />
                 </div>

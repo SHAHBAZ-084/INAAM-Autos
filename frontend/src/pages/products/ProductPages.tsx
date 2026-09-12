@@ -254,7 +254,7 @@ export function ProductsListPage() {
       <Link to="/products/add"><PrimaryButton type="button"><Plus className="mr-1.5 inline h-4 w-4" aria-hidden />Add Product</PrimaryButton></Link>
     </div>}>
       <Panel className="mb-4"><div className="grid gap-4 md:grid-cols-4">
-        <div className="md:col-span-2"><FieldLabel>Search</FieldLabel><TextInput value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Name, product code, or barcode" /></div>
+        <div className="md:col-span-2"><FieldLabel>Search</FieldLabel><RomanUrduInput value={search} onValueChange={(value) => { setSearch(value); setPage(1); }} placeholder="Name, product code, or barcode" /></div>
         <div><FieldLabel>Category</FieldLabel><select className={SELECT_CLASS} value={categoryId} onChange={(event) => { setCategoryId(event.target.value); setPage(1); }}><option value="">All categories</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div>
         <div>
           <FieldLabel>Stock details</FieldLabel>

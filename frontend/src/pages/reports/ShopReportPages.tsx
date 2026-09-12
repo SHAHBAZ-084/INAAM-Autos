@@ -663,9 +663,12 @@ type BestSellingSummary = {
   totalSoldQty: number;
   totalRevenue: number;
   totalProfit: number;
+  minSoldQty: number | null;
   maxSoldQty: number | null;
   sortBy?: BestSellingSort;
 };
+
+type QtyFilterMode = 'none' | 'min' | 'max';
 
 const BEST_SELLING_SORT_OPTIONS: { value: BestSellingSort; label: string }[] = [
   { value: 'sold_desc', label: 'Most to least (sold qty)' },
@@ -692,21 +695,22 @@ export function BestSellingProductsReportPage() {
     ],
     () => ['Sr No', 'Product Name', 'Sold Qty', 'Stock Remaining', 'Revenue', 'Profit'],
   );
-  const [maxSoldQty, setMaxSoldQty] = useState('');
+  const [qtyFilterMode, setQtyFilterMode] = useState<QtyFilterMode>('none');
+  const [qtyFilterValue, setQtyFilterValue] = useState('');
   const [sortBy, setSortBy] = useState<BestSellingSort>('sold_desc');
   const summary = (r.result as { summary?: BestSellingSummary } | null)?.summary;
 
   useEffect(() => {
     const next: Record<string, string> = { sortBy };
-    const trimmed = maxSoldQty.trim();
-    if (trimmed !== '') {
-      const n = Math.max(0, Math.floor(Number(trimmed) || 0));
-      next.maxSoldQty = String(n);
+    if (qtyFilterMode !== 'none') {
+      const n = Math.max(0, Math.floor(Number(qtyFilterValue) || 0));
+      if (qtyFilterMode === 'min') next.minSoldQty = String(n);
+      if (qtyFilterMode === 'max') next.maxSoldQty = String(n);
     }
     r.setExtraParams(next);
     r.setPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when filters change
-  }, [maxSoldQty, sortBy]);
+  }, [qtyFilterMode, qtyFilterValue, sortBy]);
 
   const headerStats = summary
     ? [
@@ -721,7 +725,7 @@ export function BestSellingProductsReportPage() {
     <ReportShell
       {...bindPaginatedReport(r, {
         title: 'Best Selling Products',
-        subtitle: 'Product-wise sales overview — choose sort and optional max sold qty',
+        subtitle: 'Product-wise sales overview — choose sort and min/max sold qty filter',
         searchPlaceholder: 'Product name or code…',
         headerStats,
       })}
@@ -742,21 +746,39 @@ export function BestSellingProductsReportPage() {
           </select>
         </div>
         <div>
-          <FieldLabel>Max sold qty</FieldLabel>
-          <TextInput
-            type="number"
-            min={0}
-            step={1}
-            className="w-28"
-            value={maxSoldQty}
-            onChange={(e) => setMaxSoldQty(e.target.value)}
-            placeholder={t('No limit')}
-            title={t('Show products sold at most this many times (leave empty for all)')}
-          />
+          <FieldLabel>Sold qty filter</FieldLabel>
+          <select
+            className="min-w-[9rem] rounded-lg border border-border bg-surface2 px-3 py-2 text-sm"
+            value={qtyFilterMode}
+            onChange={(e) => {
+              const mode = e.target.value as QtyFilterMode;
+              setQtyFilterMode(mode);
+              if (mode !== 'none' && qtyFilterValue.trim() === '') setQtyFilterValue('1');
+            }}
+          >
+            <option value="none">{t('No qty filter')}</option>
+            <option value="min">{t('Min sold qty')}</option>
+            <option value="max">{t('Max sold qty')}</option>
+          </select>
         </div>
-        <p className="pb-2 text-xs text-textMuted">
-          {t('Empty max = full list. Sort dropdown changes order.')}
-        </p>
+        {qtyFilterMode !== 'none' ? (
+          <div>
+            <FieldLabel>{qtyFilterMode === 'min' ? 'Min value' : 'Max value'}</FieldLabel>
+            <TextInput
+              type="number"
+              min={0}
+              step={1}
+              className="w-28"
+              value={qtyFilterValue}
+              onChange={(e) => setQtyFilterValue(e.target.value)}
+              title={
+                qtyFilterMode === 'min'
+                  ? t('Show products sold at least this many times')
+                  : t('Show products sold at most this many times (leave empty for all)')
+              }
+            />
+          </div>
+        ) : null}
       </div>
     </ReportShell>
   );

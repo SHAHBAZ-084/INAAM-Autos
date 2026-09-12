@@ -418,9 +418,9 @@ export function NewSalePage() {
 
           <Panel>
             <FieldLabel>Search by name or code</FieldLabel>
-            <TextInput
+            <RomanUrduInput
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onValueChange={setSearch}
               placeholder="Type product name or code"
             />
             {searchResults.length > 0 ? (

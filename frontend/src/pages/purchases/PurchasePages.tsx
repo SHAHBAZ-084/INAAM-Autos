@@ -22,6 +22,7 @@ import {
   SecondaryButton,
   TextInput,
 } from '../../components/ui/PageShell';
+import { RomanUrduInput } from '../../components/ui/RomanUrduInput';
 import { PaymentMethodFields, toApiPaymentMethod, type SimplePayKind } from '../../components/ui/PaymentMethodFields';
 
 function todayInput() {
@@ -362,9 +363,9 @@ export function PurchaseEntryPage() {
                 {quickAddOpen ? 'Close quick add' : 'Quick add product'}
               </GhostButton>
             </div>
-            <TextInput
+            <RomanUrduInput
               value={productSearch}
-              onChange={(e) => setProductSearch(e.target.value)}
+              onValueChange={setProductSearch}
               placeholder="Search by name, code, or barcode"
             />
             {products.length > 0 ? (
