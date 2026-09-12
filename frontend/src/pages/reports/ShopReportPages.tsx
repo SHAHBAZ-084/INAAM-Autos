@@ -161,7 +161,6 @@ export function ReportShell({
   const displayHeaders = headers.map((h) => t(h));
   const presetOptions = PRESET_OPTIONS.map((o) => ({ ...o, label: t(o.label) }));
   const emptyText = emptyMessage ? t(emptyMessage) : t('No rows to show');
-  const searchPh = searchPlaceholder ? t(searchPlaceholder) : t('Search…');
   const urduRtl = isRtlUiLanguage(language);
 
   useEffect(() => {
