@@ -179,7 +179,7 @@ async function downloadPdfViaHtmlCanvas(
   .biz-name { font-size: 18px; font-weight: 800; margin: 0 0 4px; color: #111; }
   .rpt-title { font-size: 16px; font-weight: 800; margin: 0; color: #111; }
   .hdr-right div { margin: 0 0 2px; }
-  .stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+  .stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; }
   .stat {
     min-width: 130px;
     background: #f3f3f3;
@@ -215,7 +215,6 @@ async function downloadPdfViaHtmlCanvas(
     <div>${escapeHtml(generated)}</div>
   </div>
 </div>
-${statsHtml}
 <table>
   <thead><tr>${headers
     .map((h) => {
@@ -237,7 +236,8 @@ ${statsHtml}
       )
       .join('')}
   </tbody>
-</table>`;
+</table>
+${statsHtml}`;
 
   document.body.appendChild(host);
 
@@ -404,16 +404,6 @@ export async function downloadPdf(
   startY += 6;
   doc.setTextColor(0, 0, 0);
 
-  if (meta?.summaryStats?.length) {
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    for (const stat of meta.summaryStats) {
-      doc.text(`${stat.label}: ${stat.value}`, leftX, startY);
-      startY += 4.5;
-    }
-    startY += 3;
-  }
-
   autoTable(doc, {
     head: [headers],
     body: rows.map((row) => row.map((cell, idx) => formatCell(headers[idx] ?? '', cell))),
@@ -440,6 +430,25 @@ export async function downloadPdf(
       doc.setTextColor(0, 0, 0);
     },
   });
+
+  if (meta?.summaryStats?.length) {
+    const finalY =
+      (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ??
+      startY;
+    let summaryY = finalY + 8;
+    const pageHeight = doc.internal.pageSize.getHeight();
+    if (summaryY + meta.summaryStats.length * 5 > pageHeight - 14) {
+      doc.addPage();
+      summaryY = 16;
+    }
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    for (const stat of meta.summaryStats) {
+      doc.text(`${stat.label}: ${stat.value}`, leftX, summaryY);
+      summaryY += 4.5;
+    }
+  }
 
   doc.save(filename);
 }

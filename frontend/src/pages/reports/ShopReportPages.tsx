@@ -254,9 +254,10 @@ export function ReportShell({
       tr:nth-child(even){background:#fafafa}
       .num{text-align:end}
       .items-detail{font-size:10px;color:#666;font-weight:500;margin-top:2px;line-height:1.35}
-    </style></head><body class="print-doc-wrap">${headerHtml}${statsHtml}
+    </style></head><body class="print-doc-wrap">${headerHtml}
     <table class="print-table-accent"><thead><tr>${displayHeaders.map((h) => `<th>${h}</th>`).join('')}</tr></thead>
-    <tbody>${exportRows.map((row) => `<tr>${row.map((c) => `<td>${String(c).replace(/\n/g, '<br/>')}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`;
+    <tbody>${exportRows.map((row) => `<tr>${row.map((c) => `<td>${String(c).replace(/\n/g, '<br/>')}</td>`).join('')}</tr>`).join('')}</tbody></table>
+    ${statsHtml}</body></html>`;
       const w = window.open('', '_blank');
       if (!w) return;
       w.document.write(html);

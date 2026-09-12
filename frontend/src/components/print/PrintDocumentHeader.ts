@@ -112,7 +112,7 @@ export function printHeaderCss(accent = '#C8102E'): string {
     table-layout: fixed;
     border-collapse: separate;
     border-spacing: 3mm 0;
-    margin: 0 0 5mm;
+    margin: 5mm 0 0;
   }
   .print-summary-box {
     display: table-cell;
