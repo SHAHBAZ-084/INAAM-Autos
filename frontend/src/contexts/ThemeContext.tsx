@@ -5,6 +5,7 @@ import {
   applyBrandColors,
   DEFAULT_PRIMARY_COLOR,
   DEFAULT_SECONDARY_COLOR,
+  sanitizeBrandColors,
 } from '../lib/brandColors';
 
 export type ThemeMode = 'light' | 'dark';
@@ -60,9 +61,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [primaryColor, secondaryColor]);
 
   const applyBrandTheme = useCallback((primary: string, secondary: string) => {
-    setPrimaryColor(primary);
-    setSecondaryColor(secondary);
-    applyBrandColors(primary, secondary);
+    const { primaryColor: nextPrimary, brandColor: nextSecondary } = sanitizeBrandColors(
+      primary,
+      secondary,
+    );
+    setPrimaryColor(nextPrimary);
+    setSecondaryColor(nextSecondary);
+    applyBrandColors(nextPrimary, nextSecondary);
   }, []);
 
   const persistTheme = useCallback(async (next: ThemeMode) => {
@@ -83,8 +88,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         if (branding.themeMode === 'light' || branding.themeMode === 'dark') {
           setThemeState(branding.themeMode);
         }
-        if (branding.primaryColor) setPrimaryColor(branding.primaryColor);
-        if (branding.secondaryColor) setSecondaryColor(branding.secondaryColor);
+        if (branding.primaryColor || branding.secondaryColor) {
+          const { primaryColor: p, brandColor: s } = sanitizeBrandColors(
+            branding.primaryColor || DEFAULT_PRIMARY_COLOR,
+            branding.secondaryColor || DEFAULT_SECONDARY_COLOR,
+          );
+          setPrimaryColor(p);
+          setSecondaryColor(s);
+        }
       } catch {
         /* public branding unavailable */
       }
@@ -92,8 +103,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       if (settings.themeMode === 'light' || settings.themeMode === 'dark') {
         setThemeState(settings.themeMode);
       }
-      if (settings.primaryColor) setPrimaryColor(settings.primaryColor);
-      if (settings.secondaryColor) setSecondaryColor(settings.secondaryColor);
+      if (settings.primaryColor || settings.secondaryColor) {
+        const { primaryColor: p, brandColor: s } = sanitizeBrandColors(
+          settings.primaryColor || DEFAULT_PRIMARY_COLOR,
+          settings.secondaryColor || DEFAULT_SECONDARY_COLOR,
+        );
+        setPrimaryColor(p);
+        setSecondaryColor(s);
+      }
     } catch {
       /* ignore when unauthenticated — public branding already applied */
     }

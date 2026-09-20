@@ -14,6 +14,8 @@ import {
   LEGACY_PRIMARY_COLOR,
   LEGACY_SECONDARY_COLOR,
   LEGACY_TAGLINE,
+  TEAL_PRIMARY_COLORS,
+  TEAL_SECONDARY_COLORS,
 } from '../../config/brand';
 import { getUploadsDir as resolveUploadsDir } from '../../config/paths';
 import { prisma } from '../../lib/prisma';
@@ -254,6 +256,16 @@ export async function ensureBusinessSettings() {
       if (existing.themeMode === ThemeMode.LIGHT) {
         patch.themeMode = ThemeMode.DARK;
       }
+    }
+    // Revert brief teal experiment → INAAM red / black
+    const primaryUpper = existing.primaryColor.toUpperCase();
+    const secondaryUpper = existing.secondaryColor.toUpperCase();
+    const isTealBrand =
+      (TEAL_PRIMARY_COLORS as readonly string[]).includes(primaryUpper) ||
+      (TEAL_SECONDARY_COLORS as readonly string[]).includes(secondaryUpper);
+    if (isTealBrand) {
+      patch.primaryColor = DEFAULT_BUSINESS_SETTINGS.primaryColor;
+      patch.secondaryColor = DEFAULT_BUSINESS_SETTINGS.secondaryColor;
     }
     if (Object.keys(patch).length > 0) {
       const updated = await prisma.businessSettings.update({

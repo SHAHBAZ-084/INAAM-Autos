@@ -223,7 +223,7 @@ export function DashboardPage() {
               label={salesLabel(preset)}
               value={dash ? formatMoney(dash.netSales) : '—'}
               to={`/reports/sales/daily?preset=${preset}`}
-              accent="success"
+              accent="default"
               comparison={comparisons?.netSales}
               size="hero"
               hideLinkHint
@@ -233,7 +233,7 @@ export function DashboardPage() {
                 label="Net Profit"
                 value={dash ? formatMoney(dash.netProfit) : '—'}
                 to="/reports/sales/product-profit"
-                accent={dash && dash.netProfit >= 0 ? 'success' : 'danger'}
+                accent={dash && dash.netProfit < 0 ? 'danger' : 'default'}
                 comparison={comparisons?.netProfit}
                 size="gauge"
                 hideLinkHint
@@ -242,7 +242,7 @@ export function DashboardPage() {
                 label="Customer Outstanding"
                 value={dash ? formatMoney(dash.customerOutstanding) : '—'}
                 to="/reports/customers/balances"
-                accent="success"
+                accent="default"
                 size="gauge"
                 hideLinkHint
               />
@@ -279,7 +279,7 @@ export function DashboardPage() {
             </Link>
           </div>
           <div className="grid gap-2 sm:grid-cols-3">
-            <div className="dashboard-stat-chip dashboard-stat-chip--success">
+            <div className="dashboard-stat-chip dashboard-stat-chip--accent">
               <p className="dashboard-stat-chip__label">{t('Cash')}</p>
               <p className="dashboard-stat-chip__value">Rs {formatMoney(dash.salesCollectionBreakdown.cash)}</p>
             </div>
@@ -322,10 +322,10 @@ export function DashboardPage() {
               <ClickableMetricTile label="Discounts" value={dash ? formatMoney(dash.discounts) : '—'} to="/reports/sales/range" accent="info" size="compact" hideLinkHint />
               <ClickableMetricTile label="Returns" value={dash ? formatMoney(dash.saleReturns) : '—'} to="/reports/sales/returns-exchanges" accent="warning" size="compact" hideLinkHint />
               <ClickableMetricTile label="COGS" value={dash ? formatMoney(dash.costOfGoodsSold) : '—'} to="/reports/sales/product-profit" size="compact" hideLinkHint />
-              <ClickableMetricTile label="Gross Profit" value={dash ? formatMoney(dash.grossProfit) : '—'} to="/reports/sales/product-profit" accent="success" size="compact" hideLinkHint />
+              <ClickableMetricTile label="Gross Profit" value={dash ? formatMoney(dash.grossProfit) : '—'} to="/reports/sales/product-profit" accent="default" size="compact" hideLinkHint />
               <ClickableMetricTile label="Expenses" value={dash ? formatMoney(dash.expenses) : '—'} to="/reports/expenses/range" accent="warning" comparison={comparisons?.expenses} size="compact" hideLinkHint />
-              <ClickableMetricTile label="Other Income" value={dash ? formatMoney(dash.otherIncome) : '—'} to="/reports/other-income" accent="success" size="compact" hideLinkHint />
-              <ClickableMetricTile label="Cash Received" value={dash ? formatMoney(dash.cashReceived) : '—'} to="/reports/sales/payment-methods" accent="success" comparison={comparisons?.cashReceived} size="compact" hideLinkHint />
+              <ClickableMetricTile label="Other Income" value={dash ? formatMoney(dash.otherIncome) : '—'} to="/reports/other-income" accent="default" size="compact" hideLinkHint />
+              <ClickableMetricTile label="Cash Received" value={dash ? formatMoney(dash.cashReceived) : '—'} to="/reports/sales/payment-methods" accent="default" comparison={comparisons?.cashReceived} size="compact" hideLinkHint />
               <ClickableMetricTile label="Udhaar Sales" value={dash ? formatMoney(dash.udhaarSales) : '—'} to="/reports/sales/udhaar" accent="warning" size="compact" hideLinkHint />
               <ClickableMetricTile label="Stock Cost Value" value={dash ? formatMoney(dash.stockCostValue) : '—'} to="/reports/stock/valuation" size="compact" hideLinkHint />
               <ClickableMetricTile

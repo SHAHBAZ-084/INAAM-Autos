@@ -25,3 +25,7 @@ export const LEGACY_INVOICE_FOOTER = 'Thank you for shopping at Usman Mall';
 export const LEGACY_INVOICE_PREFIX = 'UM-';
 export const LEGACY_PRIMARY_COLOR = '#111111';
 export const LEGACY_SECONDARY_COLOR = '#C99618';
+
+/** Brief teal theme experiment — migrate back to red/black on settings load. */
+export const TEAL_PRIMARY_COLORS = ['#0A2B2B', '#0E3D3D', '#0A3D3D'] as const;
+export const TEAL_SECONDARY_COLORS = ['#0E6B6B', '#0D9488', '#14B8A6'] as const;

@@ -2,10 +2,28 @@
 export const DEFAULT_PRIMARY_COLOR = '#0A0A0A';
 export const DEFAULT_SECONDARY_COLOR = '#C8102E';
 
+/** Brief teal theme experiment — never keep these as live brand colors. */
+const TEAL_PRIMARY = new Set(['#0A2B2B', '#0E3D3D', '#0A3D3D']);
+const TEAL_SECONDARY = new Set(['#0E6B6B', '#0D9488', '#14B8A6']);
+
 export function normalizeHexColor(raw: string): string | null {
   const value = raw.trim();
   if (!/^#[0-9A-Fa-f]{6}$/.test(value)) return null;
   return value.toUpperCase();
+}
+
+/** Map known teal experiment colors back to INAAM red/black. */
+export function sanitizeBrandColors(primary: string, secondary: string): {
+  primaryColor: string;
+  brandColor: string;
+} {
+  let primaryColor = normalizeHexColor(primary) ?? DEFAULT_PRIMARY_COLOR;
+  let brandColor = normalizeHexColor(secondary) ?? DEFAULT_SECONDARY_COLOR;
+  if (TEAL_PRIMARY.has(primaryColor) || TEAL_SECONDARY.has(brandColor)) {
+    primaryColor = DEFAULT_PRIMARY_COLOR;
+    brandColor = DEFAULT_SECONDARY_COLOR;
+  }
+  return { primaryColor, brandColor };
 }
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
@@ -50,8 +68,7 @@ export function contrastingTextColor(backgroundHex: string): '#111111' | '#FFFFF
  * buttons, headers, accents, and highlights.
  */
 export function applyBrandColors(primary: string, secondary: string) {
-  const primaryColor = normalizeHexColor(primary) ?? DEFAULT_PRIMARY_COLOR;
-  const brandColor = normalizeHexColor(secondary) ?? DEFAULT_SECONDARY_COLOR;
+  const { primaryColor, brandColor } = sanitizeBrandColors(primary, secondary);
   const onPrimary = contrastingTextColor(primaryColor);
   const onBrand = contrastingTextColor(brandColor);
   const { r, g, b } = hexToRgb(brandColor);
