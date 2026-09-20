@@ -1,8 +1,9 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, type SupplierDetail } from '../../lib/api';
+import { api, type Supplier, type SupplierDetail } from '../../lib/api';
 import { formatDate, formatMoney } from '../../lib/format';
 import { confirmAction } from '../../lib/confirmAction';
+import { safeArray } from '../../lib/safe';
 import { Plus } from 'lucide-react';
 import {
   DangerButton,
@@ -98,7 +99,7 @@ export function SuppliersListPage() {
             </tr>
           </thead>
           <tbody>
-            {result?.items.map((s) => (
+            {safeArray<Supplier>(result?.items).map((s) => (
               <tr key={s.id} className="border-b border-border/60 hover:bg-surface1">
                 <td className="px-2 py-2">
                   <Link className="font-medium text-accent hover:underline" to={`/suppliers/${s.id}`}>
@@ -110,7 +111,7 @@ export function SuppliersListPage() {
                 <td className="px-2 py-2">{s.isActive ? 'Active' : 'Inactive'}</td>
               </tr>
             ))}
-            {!loading && (result?.items.length ?? 0) === 0 ? (
+            {!loading && safeArray(result?.items).length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-2 py-8 text-center text-textSecondary">
                   No suppliers yet.

@@ -4,7 +4,7 @@ const MONEY_FORMAT: Intl.NumberFormatOptions = {
 };
 
 /** Whole rupees as 200, paisa only when needed (200.5). Never 200.00. */
-export function formatMoney(amount: number | string) {
+export function formatMoney(amount: number | string | null | undefined) {
   const n = Math.round((Number(amount) || 0) * 100) / 100;
   return n.toLocaleString('en-PK', MONEY_FORMAT);
 }

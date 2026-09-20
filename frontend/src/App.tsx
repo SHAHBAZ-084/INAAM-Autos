@@ -83,7 +83,7 @@ import {
 
 export default function App() {
   return (
-    <ErrorBoundary>
+    <ErrorBoundary variant="app">
     <ThemeProvider>
       <LanguageProvider>
       <AuthProvider>

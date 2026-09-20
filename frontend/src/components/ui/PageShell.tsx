@@ -1,6 +1,6 @@
 import { forwardRef, ReactNode, RefObject } from 'react';
 import { Link } from 'react-router-dom';
-import { useLanguage } from '../../contexts/LanguageContext';
+import { useLanguage, useT } from '../../contexts/LanguageContext';
 
 type PageShellProps = {
   title?: ReactNode;
@@ -196,7 +196,7 @@ export const FinancialButton = forwardRef<HTMLButtonElement, React.ButtonHTMLAtt
 export const PrimaryButton = forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement>>(
   function PrimaryButton(props, ref) {
     const { className = '', children, ...rest } = props;
-    const { t } = useLanguage();
+    const t = useT();
     const label = typeof children === 'string' ? t(children) : children;
     return (
       <button
@@ -212,7 +212,7 @@ export const PrimaryButton = forwardRef<HTMLButtonElement, React.ButtonHTMLAttri
 
 export function SecondaryButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const { className = '', children, ...rest } = props;
-  const { t } = useLanguage();
+  const t = useT();
   const label = typeof children === 'string' ? t(children) : children;
   return (
     <button

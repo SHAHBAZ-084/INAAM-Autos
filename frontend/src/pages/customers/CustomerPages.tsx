@@ -10,6 +10,7 @@ import { formatDate, formatMoney } from '../../lib/format';
 import { confirmAction } from '../../lib/confirmAction';
 import { printCustomerStatement } from '../../components/customers/CustomerStatementPrint';
 import { HandCoins, Pencil, Plus, Printer } from 'lucide-react';
+import { safeArray } from '../../lib/safe';
 import {
   DangerButton,
   Feedback,
@@ -110,7 +111,7 @@ export function CustomersListPage() {
             </tr>
           </thead>
           <tbody>
-            {result?.items.map((c) => (
+            {safeArray<Customer>(result?.items).map((c) => (
               <tr key={c.id} className="border-b border-border/60 hover:bg-surface1">
                 <td className="px-2 py-2">
                   <Link className="font-medium text-accent hover:underline" to={`/customers/${c.id}`}>
@@ -122,7 +123,7 @@ export function CustomersListPage() {
                 <td className="px-2 py-2">{c.isActive ? 'Active' : 'Inactive'}</td>
               </tr>
             ))}
-            {!loading && (result?.items.length ?? 0) === 0 ? (
+            {!loading && safeArray(result?.items).length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-2 py-8 text-center text-textSecondary">
                   No customers yet.

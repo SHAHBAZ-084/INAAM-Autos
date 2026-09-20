@@ -14,6 +14,7 @@ import {
 } from '../../lib/api';
 import { formatDate, formatMoney, formatStockMovementType } from '../../lib/format';
 import { confirmAction } from '../../lib/confirmAction';
+import { newClientId, safeArray, safeNumber, safeString, safeTrim } from '../../lib/safe';
 import { Plus, Printer, Trash2 } from 'lucide-react';
 import { DangerButton, Feedback, FieldLabel, GhostButton, IconButton, LoadingState, PageShell, Panel, PrimaryButton, SecondaryButton, TextInput } from '../../components/ui/PageShell';
 import { RomanUrduInput } from '../../components/ui/RomanUrduInput';
@@ -36,7 +37,7 @@ const SELECT_CLASS = 'w-full rounded-lg border border-border bg-surface2 px-3 py
 
 function emptyVariant(): VariantDraft {
   return {
-    key: crypto.randomUUID(),
+    key: newClientId(),
     size: '',
     colour: '',
     currentStock: 0,
@@ -68,41 +69,54 @@ function labelItemsFromProduct(
   businessName: string,
   customFieldDefs: ProductCustomField[] = [],
 ): LabelItem[] {
-  const detailLines = customFieldDefs
-    .filter((def) => def.showOnBarcode && def.isActive)
+  const detailLines = safeArray<ProductCustomField>(customFieldDefs)
+    .filter((def) => def && def.showOnBarcode && def.isActive)
     .map((def) => {
-      const value = product.customFields?.[def.key]?.trim();
-      return value ? `${def.label}: ${value}` : '';
+      const value = safeTrim(product.customFields?.[def.key]);
+      const label = safeString(def.label, def.key);
+      return value ? `${label}: ${value}` : '';
     })
     .filter(Boolean);
 
-  if (product.variants?.length) {
-    return product.variants.filter((variant) => variant.barcode).map((variant) => ({
-      key: `variant-${variant.id}`,
-      businessName,
-      productName: product.name,
-      size: variant.size,
-      colour: variant.colour,
-      price: variant.salePrice ?? product.salePrice,
-      barcode: variant.barcode!,
-      productCode: variant.productCode,
-      defaultQty: Math.max(1, variant.currentStock || 1),
-      customDetailLines: detailLines,
-    }));
+  const variants = safeArray<NonNullable<Product['variants']>[number]>(product.variants).filter(Boolean);
+  if (variants.length) {
+    const items: LabelItem[] = [];
+    for (const variant of variants) {
+      const barcode = safeTrim(variant.barcode);
+      if (!barcode) continue;
+      items.push({
+        key: `variant-${variant.id}`,
+        businessName: safeString(businessName),
+        productName: safeString(product.name),
+        size: variant.size == null ? null : safeString(variant.size),
+        colour: variant.colour == null ? null : safeString(variant.colour),
+        price: safeNumber(variant.salePrice ?? product.salePrice),
+        barcode,
+        productCode: safeString(variant.productCode),
+        defaultQty: Math.max(1, safeNumber(variant.currentStock, 1) || 1),
+        customDetailLines: detailLines,
+      });
+    }
+    return items;
   }
-  return product.barcode
+
+  const productBarcode = safeTrim(product.barcode);
+  return productBarcode
     ? [{
         key: `product-${product.id}`,
-        businessName,
-        productName: product.name,
-        price: product.salePrice,
-        barcode: product.barcode,
-        productCode: product.productCode,
-        defaultQty: Math.max(1, product.currentStock || 1),
+        businessName: safeString(businessName),
+        productName: safeString(product.name),
+        price: safeNumber(product.salePrice),
+        barcode: productBarcode,
+        productCode: safeString(product.productCode),
+        defaultQty: Math.max(1, safeNumber(product.currentStock, 1) || 1),
         customDetailLines: detailLines,
       }]
     : [];
 }
+
+/** Exported for Vitest — keep in sync with list/edit label generation. */
+export { labelItemsFromProduct };
 
 export function ProductsListPage() {
   const location = useLocation();
@@ -155,9 +169,9 @@ export function ProductsListPage() {
   useEffect(() => {
     Promise.all([api.listProductCategories(), api.getSettings(), api.listProductCustomFields()])
       .then(([cats, settings, fields]) => {
-        setCategories(cats);
-        setBusinessName(settings.businessName);
-        setCustomFieldDefs(fields);
+        setCategories(safeArray(cats));
+        setBusinessName(settings.businessName?.trim() || APP_DISPLAY_NAME);
+        setCustomFieldDefs(safeArray(fields));
         setCreditLine(settings.developerCreditLine ?? '');
         setLabelSizeKey(settings.barcodeLabelSize || '58x40');
         setLabelStyleKey(settings.barcodeLabelStyle || 'builtin:standard');
@@ -313,10 +327,10 @@ export function ProductsListPage() {
         <th className="px-2 py-2 text-right font-medium">Purchase</th>
         <th className="px-2 py-2 font-medium">Actions</th>
       </tr></thead><tbody>
-        {result?.items.map((product, index) => (
+        {safeArray<Product>(result?.items).map((product, index) => (
           <ProductListRow
             key={product.id}
-            srNo={(result.page - 1) * result.pageSize + index + 1}
+            srNo={(safeNumber(result?.page, 1) - 1) * safeNumber(result?.pageSize, 20) + index + 1}
             product={product}
             businessName={businessName}
             customFieldDefs={customFieldDefs}
@@ -337,7 +351,7 @@ export function ProductsListPage() {
             onDeleteStart={() => {
               void (async () => {
                 const ok = await confirmAction(
-                  `Permanently delete "${product.name}"? This cannot be undone.`,
+                  `Permanently delete "${safeString(product.name) || 'product'}"? This cannot be undone.`,
                   { title: 'Delete product', confirmLabel: 'Delete' },
                 );
                 if (!ok) return;
@@ -347,8 +361,8 @@ export function ProductsListPage() {
                   prev
                     ? {
                         ...prev,
-                        items: prev.items.filter((p) => p.id !== product.id),
-                        total: Math.max(0, prev.total - 1),
+                        items: safeArray<Product>(prev.items).filter((p) => p.id !== product.id),
+                        total: Math.max(0, safeNumber(prev.total) - 1),
                       }
                     : prev,
                 );
@@ -366,9 +380,9 @@ export function ProductsListPage() {
             }}
           />
         ))}
-        {!loading && result?.items.length === 0 ? <tr><td colSpan={9} className="px-2 py-8 text-center text-textSecondary">No products found.</td></tr> : null}
+        {!loading && safeArray(result?.items).length === 0 ? <tr><td colSpan={9} className="px-2 py-8 text-center text-textSecondary">No products found.</td></tr> : null}
       </tbody></table></div>
-      {result ? <div className="mt-4 flex items-center justify-between"><p className="text-sm text-textSecondary">Page {result.page} of {result.totalPages} ({result.total} products)</p><div className="flex gap-2"><SecondaryButton disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>Previous</SecondaryButton><SecondaryButton disabled={page >= result.totalPages} onClick={() => setPage((value) => value + 1)}>Next</SecondaryButton></div></div> : null}
+      {result ? <div className="mt-4 flex items-center justify-between"><p className="text-sm text-textSecondary">Page {safeNumber(result.page, 1)} of {safeNumber(result.totalPages, 1)} ({safeNumber(result.total)} products)</p><div className="flex gap-2"><SecondaryButton disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>Previous</SecondaryButton><SecondaryButton disabled={page >= safeNumber(result.totalPages, 1)} onClick={() => setPage((value) => value + 1)}>Next</SecondaryButton></div></div> : null}
       </Panel>
       {labelItems?.length ? (
         <BarcodeLabelModal
@@ -414,7 +428,10 @@ function ProductListRow({
   onDeleteStart: () => void;
 }) {
   const targets = labelItemsFromProduct(product, businessName, customFieldDefs);
-  const hasVariants = (product.variants?.length ?? 0) > 0;
+  const variants = safeArray<NonNullable<Product['variants']>[number]>(product.variants).filter(Boolean);
+  const hasVariants = variants.length > 0;
+  const sellableStock = safeNumber(product.currentStock);
+  const purchase = safeNumber(product.purchasePrice);
 
   return (
     <>
@@ -426,9 +443,9 @@ function ProductListRow({
           </GhostButton>
         </td>
         <td className="px-2 py-2">
-          <Link className="font-medium text-accent hover:underline" to={`/products/${product.id}`}>{product.name}</Link>
+          <Link className="font-medium text-accent hover:underline" to={`/products/${product.id}`}>{safeString(product.name) || '—'}</Link>
           {product.needsVariants ? <span className="ml-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-medium text-amber-900 dark:text-amber-200">*Need Variants</span> : null}
-          {product.isOutOfStock || product.currentStock <= 0 ? (
+          {product.isOutOfStock || sellableStock <= 0 ? (
             <span className="ml-2 rounded bg-surface1 px-1.5 py-0.5 text-xs text-textMuted">Out of stock</span>
           ) : product.isLowStock ? (
             <span className="ml-2 rounded bg-bgDanger px-1.5 py-0.5 text-xs text-danger">Low stock</span>
@@ -442,13 +459,13 @@ function ProductListRow({
           {!product.isActive ? <span className="ml-2 rounded bg-surface1 px-1.5 py-0.5 text-xs text-textMuted">Inactive</span> : null}
         </td>
         <td className="px-2 py-2">{product.category?.name ?? '—'}</td>
-        <td className="px-2 py-2 text-right">{product.currentStock}</td>
+        <td className="px-2 py-2 text-right">{sellableStock}</td>
         <td className="px-2 py-2 text-right text-amber-800 dark:text-amber-200">
           {(product.damagedStock ?? 0) > 0 ? product.damagedStock : '—'}
         </td>
-        <td className="px-2 py-2 text-right">{formatMoney(product.salePrice)}</td>
+        <td className="px-2 py-2 text-right">{formatMoney(safeNumber(product.salePrice))}</td>
         <td className="px-2 py-2 text-right">
-          {product.purchasePrice > 0 ? formatMoney(product.purchasePrice) : '—'}
+          {purchase > 0 ? formatMoney(purchase) : '—'}
         </td>
         <td className="px-2 py-2">
           <div className="flex flex-wrap items-center gap-2">
@@ -492,22 +509,22 @@ function ProductListRow({
                   </tr>
                 </thead>
                 <tbody>
-                  {product.variants!.map((variant) => (
+                  {variants.map((variant) => (
                     <tr key={variant.id}>
                       <td>{variant.size ?? '—'}</td>
                       <td>{variant.colour ?? '—'}</td>
-                      <td className="text-right">{formatMoney(variant.salePrice ?? product.salePrice)}</td>
+                      <td className="text-right">{formatMoney(safeNumber(variant.salePrice ?? product.salePrice))}</td>
                       <td className="text-right">
                         {variant.purchasePrice != null
-                          ? formatMoney(variant.purchasePrice)
-                          : product.purchasePrice > 0
-                            ? formatMoney(product.purchasePrice)
+                          ? formatMoney(safeNumber(variant.purchasePrice))
+                          : purchase > 0
+                            ? formatMoney(purchase)
                             : '—'}
                       </td>
-                      <td className="text-right">{variant.currentStock}</td>
+                      <td className="text-right">{safeNumber(variant.currentStock)}</td>
                       <td className="text-right">{(variant.damagedStock ?? 0) > 0 ? variant.damagedStock : '—'}</td>
                       <td>
-                        {variant.isOutOfStock || variant.currentStock <= 0 ? (
+                        {variant.isOutOfStock || safeNumber(variant.currentStock) <= 0 ? (
                           <span className="rounded bg-surface1 px-1.5 py-0.5 text-xs text-textMuted">
                             Out of stock
                           </span>
@@ -519,14 +536,14 @@ function ProductListRow({
                           '—'
                         )}
                       </td>
-                      <td className="font-mono text-xs">{variant.barcode ?? '—'} / {variant.productCode}</td>
+                      <td className="font-mono text-xs">{variant.barcode ?? '—'} / {safeString(variant.productCode) || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             ) : (
               <p className="text-sm text-textSecondary">
-                No variants. Product Code: <span className="font-mono">{product.productCode}</span>
+                No variants. Product Code: <span className="font-mono">{safeString(product.productCode) || '—'}</span>
                 {product.barcode ? <> · Barcode: <span className="font-mono">{product.barcode}</span></> : null}
                 {(product.damagedStock ?? 0) > 0 ? <> · Damaged: {product.damagedStock}</> : null}
               </p>
@@ -547,7 +564,7 @@ function StockAdjustModal({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const hasVariants = (product.variants?.length ?? 0) > 0;
+  const hasVariants = safeArray(product.variants).length > 0;
   const [variantId, setVariantId] = useState<number | ''>('');
   const [direction, setDirection] = useState<'add' | 'reduce' | 'damage' | 'discard_damaged'>('add');
   const [quantity, setQuantity] = useState('1');
@@ -603,9 +620,9 @@ function StockAdjustModal({
                 required
               >
                 <option value="">Select variant</option>
-                {product.variants!.map((v) => (
+                {safeArray<NonNullable<Product['variants']>[number]>(product.variants).filter(Boolean).map((v) => (
                   <option key={v.id} value={v.id}>
-                    {variantLabel(v)} — stock {v.currentStock}
+                    {variantLabel(v)} — stock {safeNumber(v.currentStock)}
                     {(v.damagedStock ?? 0) > 0 ? ` · damaged ${v.damagedStock}` : ''}
                   </option>
                 ))}
@@ -733,8 +750,8 @@ export function ProductFormPage({ mode }: { mode: 'add' | 'edit' }) {
     Promise.all([api.listProductCategories(), api.getSettings(), api.listProductCustomFields()])
       .then(([cats, settings, fields]) => {
         setCategories(cats);
-        setBusinessName(settings.businessName);
-        setCustomFieldDefs(fields);
+        setBusinessName(settings.businessName?.trim() || APP_DISPLAY_NAME);
+        setCustomFieldDefs(safeArray(fields));
         setCreditLine(settings.developerCreditLine ?? '');
         setLabelSizeKey(settings.barcodeLabelSize || '58x40');
         setLabelStyleKey(settings.barcodeLabelStyle || 'builtin:standard');
@@ -749,29 +766,33 @@ export function ProductFormPage({ mode }: { mode: 'add' | 'edit' }) {
       .getProduct(productId)
       .then((p) => {
         setProduct(p);
-        setName(p.name);
+        setName(safeString(p.name));
         setCategoryId(p.categoryId ? String(p.categoryId) : '');
         setBrand(p.brand ?? '');
-        setPurchasePrice(p.purchasePrice > 0 ? String(p.purchasePrice) : '');
-        setSalePrice(String(p.salePrice));
+        setPurchasePrice(safeNumber(p.purchasePrice) > 0 ? String(p.purchasePrice) : '');
+        setSalePrice(String(safeNumber(p.salePrice)));
         setLowStockLimit(p.lowStockLimit != null ? String(p.lowStockLimit) : '');
-        setOpeningStock(String(p.currentStock));
+        setOpeningStock(String(safeNumber(p.currentStock)));
         setNotes(p.notes ?? '');
-        setCustomFieldValues(p.customFields ?? {});
+        setCustomFieldValues(
+          Object.fromEntries(
+            Object.entries(p.customFields ?? {}).map(([k, v]) => [k, safeString(v)]),
+          ),
+        );
         setVariants(
-          (p.variants ?? []).map((v) => ({
+          safeArray<NonNullable<Product['variants']>[number]>(p.variants).filter(Boolean).map((v) => ({
             key: String(v.id),
             existingId: v.id,
             size: v.size ?? '',
             colour: v.colour ?? '',
-            productCode: v.productCode,
+            productCode: safeString(v.productCode),
             barcode: v.barcode,
             purchasePrice: v.purchasePrice,
             salePrice: v.salePrice,
-            currentStock: v.currentStock,
-            originalStock: v.currentStock,
-            sizeCustom: !!(v.size && !(SIZE_PRESETS as readonly string[]).includes(v.size)),
-            colourCustom: !!(v.colour && !(COLOUR_PRESETS as readonly string[]).includes(v.colour)),
+            currentStock: safeNumber(v.currentStock),
+            originalStock: safeNumber(v.currentStock),
+            sizeCustom: !!(v.size && !(SIZE_PRESETS as readonly string[]).includes(safeString(v.size))),
+            colourCustom: !!(v.colour && !(COLOUR_PRESETS as readonly string[]).includes(safeString(v.colour))),
           })),
         );
       })
@@ -1152,7 +1173,7 @@ export function ProductFormPage({ mode }: { mode: 'add' | 'edit' }) {
                           required={field.required}
                         >
                           <option value="">Select…</option>
-                          {field.options.map((opt) => (
+                          {safeArray<string>(field.options).map((opt) => (
                             <option key={opt} value={opt}>
                               {opt}
                             </option>

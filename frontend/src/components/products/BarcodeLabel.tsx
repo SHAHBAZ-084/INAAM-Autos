@@ -119,7 +119,10 @@ function BarcodeSvg({ value, compact }: { value: string; compact?: boolean }) {
 }
 
 function formatVariantLine(size?: string | null, colour?: string | null) {
-  return [size, colour].filter(Boolean).join('/');
+  const parts = [size, colour]
+    .map((part) => (part == null ? '' : typeof part === 'string' ? part : String(part)))
+    .filter(Boolean);
+  return parts.join('/');
 }
 
 function variantTitle(item: LabelItem) {
@@ -549,7 +552,7 @@ function buildPrintHtml(
   const compact = layout === 'compact' || size.heightMm <= 25 || size.widthMm <= 40;
   const barcodeHeight = layout === 'minimal' ? 32 : compact ? 28 : 36;
   const barcodeWidth = compact ? 1.1 : 1.3;
-  const credit = creditLine.trim();
+  const credit = typeof creditLine === 'string' ? creditLine.trim() : '';
   const priceSize =
     layout === 'priceFocus' ? (compact ? '11pt' : '13pt') : compact ? '9pt' : '11pt';
   const renderOpts: BarcodeRenderOpts = {

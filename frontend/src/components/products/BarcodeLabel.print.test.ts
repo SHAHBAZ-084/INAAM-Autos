@@ -27,7 +27,7 @@ describe('buildStickerLabelPrintHtml', () => {
     const html = buildStickerLabelPrintHtml([sampleItem], 'standard', 38, 28, 2, 2);
     expect(html).toContain('@page {\n    size: 78mm 28mm;');
     expect(html).toContain('class="page"');
-    expect((html.match(/class="label"/g) ?? []).length).toBe(2);
+    expect((html.match(/class="label(?:\s|")/g) ?? []).length).toBe(2);
     expect(html).toContain('Oil Filter');
     expect(html).toContain('8901234567890');
   });

@@ -347,6 +347,11 @@ export function SystemHealthPage() {
               <SecondaryButton type="button" onClick={() => void openLogsFolder()}>
                 Open Logs Folder
               </SecondaryButton>
+            </div>
+            <p className="mt-2 text-xs text-textMuted">
+              {t('UI crashes are written to app.log in this folder (look for "UI client error").')}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
               <Link to="/system/settings" className="inline-flex items-center rounded-md border border-border px-3 py-1.5 text-sm">
                 {t('Backup settings')}
               </Link>

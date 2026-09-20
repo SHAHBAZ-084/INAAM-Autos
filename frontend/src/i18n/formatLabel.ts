@@ -28,7 +28,7 @@ export function lookupUrdu(english: string): string | null {
  * ENGLISH → as-is; URDU → Urdu only; BOTH → `English (اردو)`.
  */
 export function formatLabel(english: string, language: UiLanguage): string {
-  const source = english ?? '';
+  const source = typeof english === 'string' ? english : english == null ? '' : String(english);
   if (!source.trim() || language === 'ENGLISH') return source;
   const urdu = lookupUrdu(source);
   if (!urdu) return source;

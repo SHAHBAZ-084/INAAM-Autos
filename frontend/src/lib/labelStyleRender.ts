@@ -107,21 +107,23 @@ function barcodeSvgMarkup(value: string, widthMm: number, heightMm: number, font
 }
 
 export function freeformFieldDisplayValue(field: LabelStyleField, item: FreeformLabelItem): string {
+  const asText = (value: unknown) =>
+    value == null ? '' : typeof value === 'string' ? value.trim() : String(value).trim();
   switch (field.type) {
     case 'shop':
-      return item.businessName;
+      return asText(item.businessName);
     case 'name':
-      return item.productName;
+      return asText(item.productName);
     case 'size':
-      return item.size?.trim() || '';
+      return asText(item.size);
     case 'colour':
-      return item.colour?.trim() || '';
+      return asText(item.colour);
     case 'price':
-      return `Rs ${Math.round(item.price)}`;
+      return `Rs ${Math.round(Number(item.price) || 0)}`;
     case 'customText':
-      return field.customText?.trim() || '';
+      return asText(field.customText);
     case 'barcode':
-      return item.barcode;
+      return asText(item.barcode);
     default:
       return '';
   }

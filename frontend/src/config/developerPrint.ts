@@ -1,3 +1,5 @@
+import { safeTrim } from '../lib/safe';
+
 export type PrintFieldKey =
   | 'logo'
   | 'businessName'
@@ -163,7 +165,7 @@ export function applyDeveloperBarcodeToLabelItems<
   },
 >(items: T[], options: DeveloperBarcodeLabelOptions): T[] {
   const cfg = parseDeveloperConfig(options.cfg);
-  const displayName = cfg.barcodeBusinessName.trim() || options.businessName.trim();
+  const displayName = safeTrim(cfg.barcodeBusinessName) || safeTrim(options.businessName);
   const customLines = cfg.barcodeCustomLines.filter((line) => line.enabled).map((line) => line.text);
   const showLogo = isPrintFieldEnabled(cfg, 'barcode', 'logo');
   const logoSrc = showLogo ? options.logoSrc ?? null : null;

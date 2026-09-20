@@ -15,6 +15,7 @@ import {
 } from '../../lib/api';
 import { formatDate, formatDateTime, formatMoney } from '../../lib/format';
 import { confirmAction } from '../../lib/confirmAction';
+import { safeArray } from '../../lib/safe';
 import { shortcutLabel } from '../../lib/shortcuts';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { Printer, Trash2 } from 'lucide-react';
@@ -996,7 +997,7 @@ export function InvoicesListPage() {
               </tr>
             </thead>
             <tbody>
-              {result?.items.map((inv) => (
+              {safeArray<Invoice>(result?.items).map((inv) => (
                 <tr key={inv.id} className="border-b border-border/60 hover:bg-surface1">
                   <td className="px-2 py-2">
                     <Link className="font-medium text-accent hover:underline" to={`/sales/${inv.id}`}>
@@ -1054,7 +1055,7 @@ export function InvoicesListPage() {
                   </td>
                 </tr>
               ))}
-              {!loading && result?.items.length === 0 ? (
+              {!loading && safeArray(result?.items).length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-2 py-8 text-center text-textSecondary">
                     No invoices match these filters.

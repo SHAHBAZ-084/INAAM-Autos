@@ -9,6 +9,7 @@ import {
   type Supplier,
 } from '../../lib/api';
 import { formatDate, formatMoney } from '../../lib/format';
+import { newClientId, safeArray } from '../../lib/safe';
 import { shortcutLabel } from '../../lib/shortcuts';
 import { Trash2 } from 'lucide-react';
 import {
@@ -109,7 +110,7 @@ export function PurchaseEntryPage() {
     setLines((prev) => [
       ...prev,
       {
-        key: crypto.randomUUID(),
+        key: newClientId(),
         productId: product.id,
         variantId: variantId ?? null,
         productName: product.name,
@@ -606,7 +607,7 @@ export function PurchasesListPage() {
             </tr>
           </thead>
           <tbody>
-            {result?.items.map((p) => (
+            {safeArray<Purchase>(result?.items).map((p) => (
               <tr key={p.id} className="border-b border-border/60">
                 <td className="px-2 py-2">
                   <Link className="text-accent hover:underline" to={`/purchases/${p.id}`}>

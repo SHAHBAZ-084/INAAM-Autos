@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
+import { RouteErrorBoundary } from '../ErrorBoundary';
 import { useGlobalBarcodeScanner } from '../../hooks/useGlobalBarcodeScanner';
 import { restorePageInteraction } from '../../lib/restorePageInteraction';
 
@@ -23,7 +24,9 @@ export function AppShell() {
     <div className="flex min-h-screen bg-surface3">
       <Sidebar />
       <main className="app-main relative z-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-surface3">
-        <Outlet />
+        <RouteErrorBoundary>
+          <Outlet />
+        </RouteErrorBoundary>
       </main>
     </div>
   );

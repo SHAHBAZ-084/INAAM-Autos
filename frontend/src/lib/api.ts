@@ -937,6 +937,18 @@ export const api = {
     return request<{ path: string }>('/api/system/logs-path');
   },
 
+  logClientError(payload: {
+    message: string;
+    stack?: string;
+    componentStack?: string;
+    route?: string;
+  }) {
+    return request<{ ok: boolean }>('/api/system/client-log', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   listBackups() {
     return request<{ items: Array<{ id: string; folderPath: string; createdAt: string; totalSize: number }> }>(
       '/api/backup',

@@ -1,6 +1,6 @@
 {
   "name": "inaam-autos",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "private": true,
   "description": "Offline desktop POS for INAAM AUTOS & SPARE PARTS — Electron + React + Express + SQLite",
   "main": "dist-electron/main.js",
@@ -112,7 +112,9 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "deleteAppDataOnUninstall": false,
-      "installerLanguages": ["en_US"],
+      "installerLanguages": [
+        "en_US"
+      ],
       "language": "1033"
     }
   }

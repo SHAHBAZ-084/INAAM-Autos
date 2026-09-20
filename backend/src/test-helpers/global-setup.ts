@@ -32,8 +32,10 @@ export default async function globalSetup() {
   });
 
   // Keep parity with app startup: add columns that may not have a migration yet.
-  const { ensureRequiredSchemaColumns } = await import('../lib/ensure-schema');
+  // Must set both env vars before importing prisma (getDatabaseUrl reads them).
   process.env.DATABASE_URL = databaseUrl;
+  process.env.NODE_ENV = 'test';
+  const { ensureRequiredSchemaColumns } = await import('../lib/ensure-schema');
   await ensureRequiredSchemaColumns();
 
   return async () => {
